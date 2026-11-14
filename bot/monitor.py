@@ -872,6 +872,8 @@ async def main():
             buy_side = basis if basis > 0 else sell_px
             fresh = await refresh_volume()
             if fresh is not None:
+                if vol is None or vol == 0:
+                    next_10k = (int(fresh // 10000) + 1) * 10000
                 vol = fresh
             while vol is not None and vol >= next_10k:
                 notify("🏆", "MILESTONE",
