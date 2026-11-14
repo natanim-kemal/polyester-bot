@@ -10,6 +10,7 @@ Usage:  python tests/test_commands.py
 Exit 0 = pass, Exit 1 = fail
 """
 
+import json
 import os
 import sys
 import time
@@ -59,7 +60,8 @@ if old_chat is None:
 else:
     os.environ["TELEGRAM_CHAT_ID"] = old_chat
 
-check("an unknown command answers", commands.reply("nope") == "unknown command")
+check("an unknown command points at help",
+      commands.reply("nope") == "unknown command | /help")
 
 
 def boom():
@@ -187,6 +189,36 @@ check("fees shows the gap floor and pair count",
       lines[2] == f"gap floor {monitor.GAP_MIN_PCT}% | 1 pairs", lines[2])
 monitor.FEES = old_fees
 commands.VOLUME.clear()
+
+text = commands.reply("help")
+check("help lists every command",
+      all(f"/{name}" in text for name in
+          ("volume", "chase", "status", "balance", "fees", "help")), text)
+check("help replies in header plus one line per command",
+      len(text.splitlines()) == 7, str(len(text.splitlines())))
+
+menu = commands.command_menu()
+check("the command menu lists every command",
+      [c["command"] for c in menu] ==
+      ["balance", "chase", "fees", "help", "status", "volume"],
+      "%d commands" % len(menu))
+check("menu names are valid telegram commands",
+      all(c["command"].replace("_", "").isalnum() and c["command"].islower()
+          for c in menu), "names ok")
+check("menu descriptions fit telegram's limits",
+      all(3 <= len(c["description"]) <= 256 for c in menu), "lengths ok")
+
+calls = []
+old_api = commands._api
+commands._api = lambda method, data=None: calls.append((method, data)) or {}
+commands._publish_commands()
+check("the menu is published with setMyCommands",
+      calls and calls[0][0] == "setMyCommands", "%d call" % len(calls))
+sent = json.loads(calls[0][1]["commands"])
+check("the published menu carries every command",
+      [c["command"] for c in sent] == [c["command"] for c in menu],
+      "%d commands" % len(sent))
+commands._api = old_api
 
 print()
 print("PASS: telegram commands answer on demand" if ok else "FAIL")

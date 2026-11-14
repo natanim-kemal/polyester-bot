@@ -202,6 +202,32 @@ def fees():
     ])
 
 
+@command("help", "/help - this list")
+def help_():
+    rows = ["🧭 COMMANDS"]
+    for _, (usage, _) in sorted(COMMANDS.items()):
+        rows.append(usage)
+    return "\n".join(rows)
+
+
+def command_menu():
+    """Telegram's / autocomplete payload, built from the same registry."""
+    menu = []
+    for name, (usage, _) in sorted(COMMANDS.items()):
+        _, sep, desc = usage.partition(" - ")
+        menu.append({"command": name, "description": desc if sep else usage})
+    return menu
+
+
+def _publish_commands():
+    """Register the / menu with Telegram; it persists between restarts."""
+    try:
+        _api("setMyCommands", {"commands": json.dumps(command_menu())})
+        print("telegram command menu updated", flush=True)
+    except Exception as e:
+        print("telegram command menu failed:", repr(e), flush=True)
+
+
 def _token_chat():
     return (os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
             os.environ.get("TELEGRAM_CHAT_ID", "").strip())
@@ -251,6 +277,7 @@ def _drain(offset):
 
 def _poll():
     global _offset
+    _publish_commands()
     try:
         _offset = _drain(-1 if _offset is None else _offset)
     except Exception as e:
