@@ -138,6 +138,41 @@ check("a stale loop reads stuck",
 monitor.rest_open_orders = old_rest
 commands.RUNTIME.clear()
 
+
+class Level:
+    def __init__(self, price):
+        self.price = price
+
+
+class Book:
+    def __init__(self, bid, ask):
+        self.bids = [Level(bid)]
+        self.asks = [Level(ask)]
+
+
+old_rest = monitor.rest_balances
+old_book = monitor.ws_book
+monitor.rest_balances = lambda: [
+    {"symbol": "USDT", "trading": "2198.23"},
+    {"symbol": "BONK", "trading": "844856342"},
+    {"symbol": "XRP", "trading": "10"}]
+monitor.ws_book = lambda sym, max_age=15.0: (
+    Book(Decimal("0.0000025"), Decimal("0.0000027"))
+    if sym == "BONK-USDT" else None)
+text = commands.reply("balance")
+lines = text.splitlines()
+check("balance shows usdt", "USDT 2,198.23" in lines[1], lines[1])
+check("balance marks a held asset at mid",
+      "BONK 844,856,342 @ 0.0000026 = 2,196.63" in text, text)
+check("an unmarked asset says so", "XRP 10 | no mark" in text, text)
+check("balance totals the marked assets",
+      lines[-1] == "total 4,394.86 USDT | 1 unmarked", lines[-1])
+monitor.rest_balances = lambda: (_ for _ in ()).throw(RuntimeError("down"))
+check("a balance outage answers",
+      "balance read failed" in commands.reply("balance"))
+monitor.rest_balances = old_rest
+monitor.ws_book = old_book
+
 print()
 print("PASS: telegram commands answer on demand" if ok else "FAIL")
 sys.exit(0 if ok else 1)
