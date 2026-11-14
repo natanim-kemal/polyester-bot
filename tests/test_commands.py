@@ -59,7 +59,8 @@ if old_chat is None:
 else:
     os.environ["TELEGRAM_CHAT_ID"] = old_chat
 
-check("an unknown command answers", commands.reply("nope") == "unknown command")
+check("an unknown command points at help",
+      commands.reply("nope") == "unknown command | /help")
 
 
 def boom():
@@ -187,6 +188,13 @@ check("fees shows the gap floor and pair count",
       lines[2] == f"gap floor {monitor.GAP_MIN_PCT}% | 1 pairs", lines[2])
 monitor.FEES = old_fees
 commands.VOLUME.clear()
+
+text = commands.reply("help")
+check("help lists every command",
+      all(f"/{name}" in text for name in
+          ("volume", "chase", "status", "balance", "fees", "help")), text)
+check("help replies in header plus one line per command",
+      len(text.splitlines()) == 7, str(len(text.splitlines())))
 
 print()
 print("PASS: telegram commands answer on demand" if ok else "FAIL")
