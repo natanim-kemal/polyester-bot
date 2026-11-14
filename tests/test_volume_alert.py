@@ -53,6 +53,13 @@ crossed, nxt = monitor.crossed_milestones(Decimal("8190000"), 8230000)
 check("a dip does not replay the line on the way up",
       crossed == [] and nxt == 8230000, "%s %s" % (crossed, nxt))
 
+shown = monitor.vol_next(Decimal("8308872"), 8310000)
+check("the next milestone sits above the rounded volume",
+      shown == 8320000, str(shown))
+shown = monitor.vol_next(Decimal("8310100"), 8320000)
+check("a reading at the line still shows the following line",
+      shown == 8320000, str(shown))
+
 print()
 print("PASS: volume alerts round cleanly and milestones fire once" if ok else "FAIL")
 sys.exit(0 if ok else 1)
