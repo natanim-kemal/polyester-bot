@@ -74,6 +74,10 @@ DEPTH_MIN_USD = Decimal(os.environ.get("DEPTH_MIN_USD", "50"))
 FALLBACK_SYMBOL = os.environ.get("FALLBACK_SYMBOL", "").strip()
 FALLBACK_MIN_GAP_PCT = Decimal(os.environ.get("FALLBACK_MIN_GAP_PCT", "0.05"))
 FALLBACK_DEPTH_MIN_USD = Decimal(os.environ.get("FALLBACK_DEPTH_MIN_USD", "1000"))
+CHASE_HALF_LIFE = 4 * 3600
+CHASE_ASK_WEIGHT = 1.0
+CHASE_BAIL_WEIGHT = 2.0
+CHASE_PARK_SCORE = 2.0
 FALLBACK_COOLDOWN = float(os.environ.get("FALLBACK_COOLDOWN", "60"))
 FALLBACK_PENNY = os.environ.get("FALLBACK_PENNY", "0") == "1"
 SAT_PENNY_AFTER = int(os.environ.get("SAT_PENNY_AFTER", "2"))
@@ -498,6 +502,44 @@ async def pick_best_liquid(c, fb, top=FALLBACK_CANDIDATES):
     return best or fb[0]
 
 
+CHASE_SCORES = {}
+
+
+def chase_load():
+    try:
+        with open(state_file("chase_state.json"), encoding="utf-8") as f:
+            raw = json.load(f)
+        return {str(s): (float(v["score"]), float(v["ts"]))
+                for s, v in raw.items()}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def chase_save():
+    try:
+        with open(state_file("chase_state.json"), "w", encoding="utf-8") as f:
+            json.dump({s: {"score": v[0], "ts": v[1]}
+                       for s, v in CHASE_SCORES.items()}, f)
+    except OSError:
+        pass
+
+
+def chase_score(sym, now):
+    rec = CHASE_SCORES.get(sym)
+    if not rec:
+        return 0.0
+    return rec[0] * 0.5 ** ((now - rec[1]) / CHASE_HALF_LIFE)
+
+
+def chase_note(sym, weight, now):
+    CHASE_SCORES[sym] = (chase_score(sym, now) + weight, now)
+    chase_save()
+
+
+def chase_parked(sym, now):
+    return chase_score(sym, now) >= CHASE_PARK_SCORE
+
+
 async def preflight_buy(c, sym, side, qty, price):
     """Ask the exchange whether the buy would be admissible. Fail-open: only
     a clear rejection blocks; an outage proceeds."""
@@ -758,6 +800,7 @@ async def main():
                     "min_qty": Decimal(p.get("minQtyBase") or "0"),
                     "scale": int(p.get("baseQuantityScale") or 8)}
                 for s, p in pairs.items()}
+        CHASE_SCORES.update(chase_load())
         ws_stop = asyncio.Event()
         ws_ids = {s: p["symbolId"] for s, p in pairs.items() if "symbolId" in p}
         ws_task = asyncio.create_task(run_books_ws(c, ws_ids, ws_stop))
@@ -964,13 +1007,15 @@ async def main():
                         picked, tag = None, ""
                         gaps = [r for r in rows
                                 if r[0] >= GAP_MIN_PCT
-                                and min(r[4], r[5]) >= DEPTH_MIN_USD]
+                                and min(r[4], r[5]) >= DEPTH_MIN_USD
+                                and not chase_parked(r[1], now)]
                         if gaps:
                             picked, tag = gaps[0], "GAP"
                         elif now >= next_fallback:
                             fb = [r for r in rows
                                   if r[0] >= FALLBACK_MIN_GAP_PCT
-                                  and min(r[4], r[5]) >= FALLBACK_DEPTH_MIN_USD]
+                                  and min(r[4], r[5]) >= FALLBACK_DEPTH_MIN_USD
+                                  and not chase_parked(r[1], now)]
                             if FALLBACK_SYMBOL:
                                 fb = [r for r in fb if r[1] == FALLBACK_SYMBOL]
                             if fb:
@@ -1209,6 +1254,7 @@ async def main():
                                                f"{PERSIST_SECONDS:.0f}s | "
                                                f"amending to {num(new_px)}",
                                                wallet(sym.split("-")[0]))
+                                        chase_note(sym, CHASE_ASK_WEIGHT, now)
                                         amended = True
                                     except Exception as e:
                                         print("amend fell back to cancel:", repr(e),
@@ -1223,6 +1269,7 @@ async def main():
                                            f"{sym} | {aged} better asks held "
                                            f"{PERSIST_SECONDS:.0f}s | re-asking under them",
                                            wallet(sym.split("-")[0]))
+                                    chase_note(sym, CHASE_BAIL_WEIGHT, now)
                                     pos["canceling"] = True
                                     pos["bail"] = True
                 if now >= next_fees:

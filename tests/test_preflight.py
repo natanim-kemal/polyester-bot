@@ -159,6 +159,7 @@ ns = {
     "now": 100.0, "next_scan": 0.0, "next_fallback": 0.0,
     "next_block_alert": 0.0, "sat": {"n": 0},
     "adopt_q": [],
+    "chase_parked": lambda sym, now: False,
 }
 exec(compile("async def idle_step(c, pairs):\n"
              "    global now, next_scan, next_fallback, next_block_alert\n"

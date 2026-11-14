@@ -182,6 +182,9 @@ ns = {
     "book": fake_book,
     "PERSIST_SECONDS": 60.0, "BETTER_ASKS_LIMIT": 2,
     "TERMINAL": {"filled", "canceled", "rejected", "expired"},
+    "chase_note": lambda sym, weight, now: None,
+    "CHASE_ASK_WEIGHT": 1.0,
+    "CHASE_BAIL_WEIGHT": 2.0,
 }
 
 for fn in ("pdec", "floor_step", "money", "num", "notify"):
