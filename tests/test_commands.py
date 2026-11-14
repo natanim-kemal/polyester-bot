@@ -110,6 +110,34 @@ check("a clear pair says clear", "BCH-USDT 0.50 | clear" in text)
 monitor.CHASE_SCORES.clear()
 check("an empty chase board says so", "no chase events" in commands.reply("chase"))
 
+commands.RUNTIME.clear()
+check("status without a tick says so",
+      "no loop tick yet" in commands.reply("status"))
+
+old_rest = monitor.rest_open_orders
+monitor.rest_open_orders = lambda: {"orders": [
+    {"clientOrderId": "gap1-abc"}, {"clientOrderId": "other"}]}
+now = time.time()
+commands.RUNTIME.update(tick=now - 5, started=now - 3600,
+                        state="selling", symbol="BONK-USDT",
+                        qty=Decimal("844856342"),
+                        last_cycle=now - 120, last_fill=now - 300)
+text = commands.reply("status")
+lines = text.splitlines()
+check("status shows a fresh heartbeat",
+      "heartbeat 5s ago | ok" in lines[1], lines[1])
+check("status shows uptime", "uptime 1h00m" in lines[1], lines[1])
+check("status shows the held pair and qty",
+      "state selling BONK-USDT 844,856,342" in lines[2], lines[2])
+check("status counts only our open orders", "open orders 1" in lines[2], lines[2])
+check("status shows the last cycle and fill",
+      "last cycle" in lines[3] and "last fill" in lines[3], lines[3])
+commands.RUNTIME["tick"] = now - 400
+check("a stale loop reads stuck",
+      "| stuck |" in commands.reply("status").splitlines()[1])
+monitor.rest_open_orders = old_rest
+commands.RUNTIME.clear()
+
 print()
 print("PASS: telegram commands answer on demand" if ok else "FAIL")
 sys.exit(0 if ok else 1)
