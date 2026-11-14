@@ -173,6 +173,21 @@ check("a balance outage answers",
 monitor.rest_balances = old_rest
 monitor.ws_book = old_book
 
+old_fees = monitor.FEES
+monitor.FEES = {}
+check("fees before the first refresh says so",
+      "fees not loaded yet" in commands.reply("fees"))
+monitor.FEES = {"BONK-USDT": (Decimal("0.04"), Decimal("0.09"))}
+commands.VOLUME.update(tier=4)
+text = commands.reply("fees")
+lines = text.splitlines()
+check("fees shows maker and taker",
+      lines[1] == "maker 0.04% | taker 0.09% | tier 4", lines[1])
+check("fees shows the gap floor and pair count",
+      lines[2] == f"gap floor {monitor.GAP_MIN_PCT}% | 1 pairs", lines[2])
+monitor.FEES = old_fees
+commands.VOLUME.clear()
+
 print()
 print("PASS: telegram commands answer on demand" if ok else "FAIL")
 sys.exit(0 if ok else 1)
