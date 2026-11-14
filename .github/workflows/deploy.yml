@@ -53,6 +53,7 @@ jobs:
           python3 tests/test_equity.py
           python3 tests/test_preflight.py
           python3 tests/test_orphan.py
+          python3 tests/test_chase_score.py
 
       - name: Configure SSH
         env:
