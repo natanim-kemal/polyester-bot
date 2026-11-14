@@ -53,6 +53,7 @@ PERSIST = monitor.PERSIST_SECONDS
 MONEY0 = Decimal("0")
 
 alerts, cancels, modifies, placed = [], [], [], []
+modify_behavior = []
 codescript = {}
 
 
@@ -82,10 +83,11 @@ class FakeOrders:
     async def cancel(self, key=None, symbol=None):
         cancels.append(symbol)
 
-    async def modify(self, key=None, symbol=None, new_price=None):
+    async def modify(self, key=None, symbol=None, new_price=None, behavior=None):
         if self.fail_modify:
             raise RuntimeError("amend rejected")
         modifies.append((symbol, new_price))
+        modify_behavior.append(behavior)
 
 
 class FakeC:
@@ -252,6 +254,9 @@ check("an amend failure falls back to the legacy cancel + re-ask",
       len(cancels) == 1 and pos.get("canceling") is True,
       f"cancels={cancels} canceling={pos.get('canceling')}")
 check("the legacy path keeps its alert", "ASK BAIL-OUT" in alerts, str(alerts))
+check("every amend asks to amend or replace in place",
+      modify_behavior and all(b == "amend_or_replace" for b in modify_behavior),
+      str(modify_behavior))
 
 print()
 print("PASS: chases amend in place, cancel only when truly needed" if ok else "FAIL")
