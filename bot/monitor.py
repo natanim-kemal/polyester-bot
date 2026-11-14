@@ -242,8 +242,17 @@ def num(x):
     return s or "0"
 
 
+def vol_round(x):
+    return Decimal(x).quantize(Decimal("1E4"), rounding=ROUND_HALF_UP)
+
+
 def vol_money(x):
-    return money(Decimal(x).quantize(Decimal("1E4"), rounding=ROUND_HALF_UP))
+    return money(vol_round(x))
+
+
+def vol_next(vol, next_10k):
+    shown = int(vol_round(vol))
+    return max(next_10k or shown + 10000, shown + 10000)
 
 
 def crossed_milestones(vol, next_10k):
@@ -889,7 +898,8 @@ async def main():
             next_10k = (int(vol // 10000) + 1) * 10000
             vol_shown = vol
             notify("📊", "VIP VOLUME",
-                   f"30d settled volume {vol_money(vol)} USDT | next milestone {next_10k:,}",
+                   f"30d settled volume {vol_money(vol)} USDT | "
+                   f"next milestone {vol_next(vol, next_10k):,}",
                    wallet())
 
         def beat(now):
@@ -935,7 +945,7 @@ async def main():
                     vol_shown = fresh
                     notify("📊", "VIP VOLUME",
                            f"30d settled volume {vol_money(fresh)} USDT | "
-                           f"next milestone {next_10k:,}",
+                           f"next milestone {vol_next(fresh, next_10k):,}",
                            wallet())
             notify("✅", "CYCLE DONE",
                    f"{sym} | sold {num(sold)} @ "
