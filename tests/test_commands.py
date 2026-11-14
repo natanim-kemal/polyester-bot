@@ -97,6 +97,19 @@ commands.VOLUME.clear()
 check("an unread volume says so",
       "no volume reading yet" in commands.reply("volume"))
 
+monitor.CHASE_SCORES.clear()
+monitor.CHASE_SCORES["ARB-USDT"] = (2.0, time.time())
+monitor.CHASE_SCORES["BCH-USDT"] = (0.5, time.time())
+text = commands.reply("chase")
+lines = text.splitlines()
+check("chase names the tracked and parked counts",
+      lines[0] == "🎯 CHASE | 2 tracked | 1 parked", lines[0])
+check("chase sorts the hottest pair first",
+      lines[1].startswith("ARB-USDT 2.00 | parked "), lines[1])
+check("a clear pair says clear", "BCH-USDT 0.50 | clear" in text)
+monitor.CHASE_SCORES.clear()
+check("an empty chase board says so", "no chase events" in commands.reply("chase"))
+
 print()
 print("PASS: telegram commands answer on demand" if ok else "FAIL")
 sys.exit(0 if ok else 1)
