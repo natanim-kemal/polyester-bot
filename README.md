@@ -74,7 +74,24 @@ The ones that matter most:
 ## Alerts
 
 Every alert is 1 header + 1 fact line + 1 money line (`🟢 BUY` / `🔵 ASK` / `✅ CYCLE DONE` /
-`🏆 MILESTONE`). Telegram gets everything; journal keeps a copy too.
+`🏆 MILESTONE`). Telegram gets everything; journal keeps a copy too. The VIP volume reading
+is on demand via `/volume`; only the boot reading and milestone crossings still alert.
+
+## Telegram commands
+
+The bot answers these in `TELEGRAM_CHAT_ID` only. Ask whenever you want a reading; no
+automatic volume heartbeat floods the chat.
+
+| Command | Reply |
+|---|---|
+| `/volume` | VIP 30d settled volume, next milestone, API snapshot time, reading age |
+| `/chase` | every tracked pair's chase score and remaining park time |
+| `/status` | loop heartbeat (`ok` / `slow` / `stuck`), state, position, open orders, uptime, last cycle and fill |
+| `/balance` | USDT plus every held asset marked at mid |
+| `/fees` | maker/taker, gap floor, pair count, VIP tier |
+| `/help` | the list |
+
+No reply means the process or host is down; nothing runs outside the bot.
 
 ## Verify
 
