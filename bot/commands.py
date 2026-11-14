@@ -187,6 +187,21 @@ def balance():
     return "\n".join(lines)
 
 
+@command("fees", "/fees - maker/taker, gap floor, pair count, VIP tier")
+def fees():
+    if not SRC.FEES:
+        return "💱 FEES\nfees not loaded yet"
+    maker, taker = next(iter(SRC.FEES.values()))
+    head = f"maker {maker}% | taker {taker}%"
+    if VOLUME.get("tier") is not None:
+        head += f" | tier {VOLUME['tier']}"
+    return "\n".join([
+        "💱 FEES",
+        head,
+        f"gap floor {SRC.GAP_MIN_PCT}% | {len(SRC.FEES)} pairs",
+    ])
+
+
 def _token_chat():
     return (os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
             os.environ.get("TELEGRAM_CHAT_ID", "").strip())
