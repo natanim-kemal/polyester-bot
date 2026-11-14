@@ -7,8 +7,10 @@ bot/.session
 # runtime state
 bot/volume_state.json
 bot/hot_pairs.json
+bot/chase_state.json
 /volume_state.json
 /hot_pairs.json
+/chase_state.json
 *.bak.*
 
 # python
