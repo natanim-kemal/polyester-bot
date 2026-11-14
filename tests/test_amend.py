@@ -223,6 +223,9 @@ def run_sell(fail_modify):
         "dust": {}, "carry": {}, "TERMINAL": monitor.TERMINAL,
         "PERSIST_SECONDS": PERSIST, "BETTER_ASKS_LIMIT": monitor.BETTER_ASKS_LIMIT,
         "BALANCE_GRACE": 120.0, "meta": {"ARB-USDT": M},
+        "chase_note": lambda sym, weight, now: None,
+        "CHASE_ASK_WEIGHT": monitor.CHASE_ASK_WEIGHT,
+        "CHASE_BAIL_WEIGHT": monitor.CHASE_BAIL_WEIGHT,
     }
     exec(compile("async def selling_step(c, pos, meta, now):\n"
                  + textwrap.indent(seg(state_branch("selling").body), "    "),
