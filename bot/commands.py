@@ -202,6 +202,14 @@ def fees():
     ])
 
 
+@command("help", "/help - this list")
+def help_():
+    rows = ["🧭 COMMANDS"]
+    for _, (usage, _) in sorted(COMMANDS.items()):
+        rows.append(usage)
+    return "\n".join(rows)
+
+
 def _token_chat():
     return (os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
             os.environ.get("TELEGRAM_CHAT_ID", "").strip())
