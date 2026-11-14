@@ -112,6 +112,26 @@ check("a clear pair says clear", "BCH-USDT 0.50 | clear" in text)
 monitor.CHASE_SCORES.clear()
 check("an empty chase board says so", "no chase events" in commands.reply("chase"))
 
+scores = {"ARB-USDT": (2.0, time.time())}
+monitor.CHASE_SCORES = scores
+old_score = monitor.chase_score
+seen = {"n": 0}
+
+
+def racing_score(sym, now):
+    if seen["n"] == 0:
+        scores["LATE-USDT"] = (1.0, now)
+    seen["n"] += 1
+    return old_score(sym, now)
+
+
+monitor.chase_score = racing_score
+text = commands.reply("chase")
+check("a pair added mid-command does not break the list",
+      "1 tracked" in text and "LATE-USDT" not in text, text.splitlines()[0])
+monitor.chase_score = old_score
+monitor.CHASE_SCORES = {}
+
 commands.RUNTIME.clear()
 check("status without a tick says so",
       "no loop tick yet" in commands.reply("status"))
