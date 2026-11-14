@@ -15,6 +15,7 @@ Adopted at startup: any asset with a Trading balance that has a USDT pair
 import asyncio
 import hashlib
 import json
+import math
 import os
 import sys
 import time
@@ -549,6 +550,14 @@ def chase_note(sym, weight, now):
 
 def chase_parked(sym, now):
     return chase_score(sym, now) >= CHASE_PARK_SCORE
+
+
+def chase_cooldown(sym, now):
+    """Seconds until the score decays under the park threshold; 0 if clear."""
+    score = chase_score(sym, now)
+    if score < CHASE_PARK_SCORE:
+        return 0.0
+    return math.log2(score / CHASE_PARK_SCORE) * CHASE_HALF_LIFE
 
 
 async def preflight_buy(c, sym, side, qty, price):
