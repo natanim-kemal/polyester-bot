@@ -821,7 +821,7 @@ async def main():
             """Pull the canonical 30d VIP volume the site shows."""
             try:
                 st = await c.vip.get_vip_status()
-                return Decimal(st.settled_volume_30d_usd)
+                return Decimal(str(st.settled_volume_30d_usd or "0"))
             except Exception as e:
                 print("volume refresh failed:", repr(e), flush=True)
                 return None
