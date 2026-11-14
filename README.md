@@ -91,7 +91,8 @@ automatic volume heartbeat floods the chat.
 | `/fees` | maker/taker, gap floor, pair count, VIP tier |
 | `/help` | the list |
 
-No reply means the process or host is down; nothing runs outside the bot.
+No reply means the process or host is down; nothing runs outside the bot. The bot
+registers this list with Telegram at boot, so typing `/` opens the same menu.
 
 ## Verify
 
