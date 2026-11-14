@@ -16,8 +16,6 @@ import asyncio
 import hashlib
 import json
 import os
-import re
-import subprocess
 import sys
 import time
 import urllib.parse
@@ -691,21 +689,6 @@ async def place_sell(c, pos, meta):
     return False
 
 
-def season_volume():
-    """Season volume from the checkpoint scorecard, or None if unavailable."""
-    try:
-        out = subprocess.run(
-            [sys.executable, os.path.join(HERE, "polyester_farm.py"), "checkpoints"],
-            capture_output=True, text=True, timeout=180, cwd=HERE)
-        m = re.search(r"volume=\$([\d.]+)", out.stdout or "")
-        if m:
-            return Decimal(m.group(1))
-        print("volume parse failed:", (out.stderr or out.stdout)[-200:], flush=True)
-    except Exception as e:
-        print("volume baseline fetch failed:", repr(e), flush=True)
-    return None
-
-
 def rest_asset_balance(base):
     """(trading, available) for one asset via signed REST. Raises on failure."""
     for row in rest_balances():
@@ -834,41 +817,23 @@ async def main():
         last_deadman = 0.0
         last_equity_day = ""
 
-        vol, next_10k = None, None
-        try:
-            with open(state_file("volume_state.json"), encoding="utf-8") as f:
-                s = json.load(f)
-            vol = Decimal(s["total"])
-            next_10k = int(s["next_milestone"])
-            notify("📊", "VOLUME TRACKER RESUMED",
-                   f"{money(vol)} USDT | next milestone {next_10k:,}")
-        except (OSError, ValueError, KeyError):
-            pass
-        if vol is None:
-            env_base = os.environ.get("VOLUME_BASELINE", "").strip()
-            if env_base:
-                try:
-                    vol = Decimal(env_base)
-                except Exception:
-                    vol = None
-        if vol is None:
-            vol = season_volume()
-        if vol is None:
-            vol = Decimal(50000)
-            notify("⚠️", "VOLUME BASELINE",
-                   "scorecard unavailable | starting from 50,000")
-        if next_10k is None:
-            next_10k = (int(vol // 10000) + 1) * 10000
-            notify("📊", "VOLUME TRACKER ONLINE",
-                   f"season baseline {money(vol)} USDT | next milestone {next_10k:,}")
-
-        def save_vol():
+        async def refresh_volume():
+            """Pull the canonical 30d VIP volume the site shows."""
             try:
-                with open(state_file("volume_state.json"), "w",
-                          encoding="utf-8") as f:
-                    json.dump({"total": str(vol), "next_milestone": next_10k}, f)
-            except OSError:
-                pass
+                st = await c.vip.get_vip_status()
+                return Decimal(st.settled_volume_30d_usd)
+            except Exception as e:
+                print("volume refresh failed:", repr(e), flush=True)
+                return None
+
+        vol, next_10k = await refresh_volume(), None
+        if vol is not None:
+            next_10k = (int(vol // 10000) + 1) * 10000
+            notify("📊", "VIP VOLUME",
+                   f"30d settled volume {money(vol)} USDT | next milestone {next_10k:,}",
+                   wallet())
+        else:
+            vol, next_10k = Decimal(0), 10000
 
         def beat(now):
             """Heartbeat for the external keepalive: a stale file means we are wedged."""
@@ -905,13 +870,14 @@ async def main():
                    f"{num(sell_px) if sell_px else '?'} | fee {money(fees)} USDT",
                    f"{net_txt} | {wallet(base_sym)}")
             buy_side = basis if basis > 0 else sell_px
-            vol += sold * (buy_side + sell_px)
-            while vol >= next_10k:
+            fresh = await refresh_volume()
+            if fresh is not None:
+                vol = fresh
+            while vol is not None and vol >= next_10k:
                 notify("🏆", "MILESTONE",
-                       f"{next_10k:,} USDT season volume | tracker {money(vol)} USDT",
+                       f"{next_10k:,} USDT VIP 30d volume | {money(vol)} USDT",
                        f"{money(vol - next_10k)} USDT over the line | {wallet()}")
                 next_10k += 10000
-            save_vol()
             pos, state = {}, "idle"
 
         while True:
