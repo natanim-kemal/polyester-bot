@@ -1,0 +1,170 @@
+"""Telegram slash commands, answered on demand from cached bot state.
+
+The listener runs in its own thread so it still replies when the trading loop
+is busy or wedged. It answers only TELEGRAM_CHAT_ID; silence means the bot
+process or host is gone. Commands never place orders.
+"""
+
+import json
+import os
+import threading
+import time
+import urllib.parse
+import urllib.request
+
+VOLUME = {}
+RUNTIME = {}
+SRC = None
+COMMANDS = {}
+
+_started = False
+_offset = None
+
+
+def command(name, usage):
+    """Register a handler; each handler returns the reply text."""
+    def register(fn):
+        COMMANDS[name] = (usage, fn)
+        return fn
+    return register
+
+
+def age_text(seconds):
+    seconds = max(0, int(seconds))
+    if seconds < 120:
+        return f"{seconds}s"
+    if seconds < 7200:
+        return f"{seconds // 60}m"
+    return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
+
+
+def health(age):
+    """Loop freshness for /status: a minute late is slow, five is stuck."""
+    if age < 60:
+        return "ok"
+    if age < 300:
+        return "slow"
+    return "stuck"
+
+
+def parse(text):
+    """'/volume@Bot now' -> ('volume', 'now'); anything else -> (None, '')."""
+    if not text or not text.startswith("/"):
+        return None, ""
+    head, _, rest = text.partition(" ")
+    name = head[1:].split("@", 1)[0].lower()
+    if not name:
+        return None, ""
+    return name, rest.strip()
+
+
+def reply(name):
+    item = COMMANDS.get(name)
+    if item is None:
+        return "unknown command" + (" | /help" if "help" in COMMANDS else "")
+    try:
+        return item[1]()
+    except Exception as e:
+        print("command failed:", name, repr(e), flush=True)
+        return f"command failed: {e}"
+
+
+@command("volume", "/volume - VIP 30d volume, next milestone, reading age")
+def volume():
+    v = VOLUME
+    if not v.get("vol"):
+        return "📊 VIP VOLUME\nno volume reading yet"
+    age = age_text(time.time() - v["checked_at"]) if v.get("checked_at") else "?"
+    as_of = v.get("as_of")
+    stamp = as_of.strftime("%H:%M UTC") if hasattr(as_of, "strftime") else "?"
+    tail = f"API {stamp} | checked {age} ago"
+    if v.get("tier") is not None:
+        tail += f" | tier {v['tier']}"
+    return "\n".join([
+        "📊 VIP VOLUME",
+        f"30d settled {SRC.vol_money(v['vol'])} USDT | "
+        f"next {SRC.vol_next(v['vol'], v.get('next')):,}",
+        tail,
+    ])
+
+
+def _token_chat():
+    return (os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
+            os.environ.get("TELEGRAM_CHAT_ID", "").strip())
+
+
+def _api(method, data=None):
+    tok, _ = _token_chat()
+    req = urllib.request.Request(
+        "https://api.telegram.org/bot" + tok + "/" + method,
+        data=urllib.parse.urlencode(data).encode() if data else None)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read() or b"{}")
+
+
+def _send(text):
+    tok, chat = _token_chat()
+    if not tok or not chat:
+        return
+    try:
+        _api("sendMessage", {"chat_id": chat, "text": text})
+    except Exception as e:
+        print("telegram command reply failed:", repr(e), flush=True)
+
+
+def _allowed(msg):
+    return str((msg.get("chat") or {}).get("id", "")) == _token_chat()[1]
+
+
+def _handle(update):
+    msg = update.get("message") or {}
+    if not _allowed(msg):
+        return
+    name, _ = parse(msg.get("text") or "")
+    if name:
+        _send(reply(name))
+
+
+def _drain(offset):
+    """Skip commands sent while the bot was down; start from now."""
+    while True:
+        data = _api("getUpdates", {"offset": offset, "timeout": 0, "limit": 100})
+        updates = data.get("result") or []
+        if not updates:
+            return offset
+        offset = updates[-1]["update_id"] + 1
+
+
+def _poll():
+    global _offset
+    try:
+        _offset = _drain(-1 if _offset is None else _offset)
+    except Exception as e:
+        print("telegram command drain failed:", repr(e), flush=True)
+        _offset = _offset or 0
+    while True:
+        try:
+            data = _api("getUpdates", {"offset": _offset, "timeout": 25,
+                                       "limit": 100})
+            for update in data.get("result") or []:
+                _offset = update["update_id"] + 1
+                _handle(update)
+        except Exception as e:
+            print("telegram command poll failed:", repr(e), flush=True)
+            time.sleep(5)
+
+
+def start(src):
+    """Start the listener thread once; no-op without token and chat id."""
+    global SRC, _started
+    if _started:
+        return
+    tok, chat = _token_chat()
+    if not tok or not chat:
+        print("telegram commands off: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset",
+              flush=True)
+        return
+    SRC = src
+    _started = True
+    threading.Thread(target=_poll, name="telegram-commands", daemon=True).start()
+    print("telegram commands on", flush=True)
