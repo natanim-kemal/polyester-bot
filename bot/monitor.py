@@ -821,7 +821,8 @@ async def main():
             """Pull the canonical 30d VIP volume the site shows."""
             try:
                 st = await c.vip.get_vip_status()
-                return Decimal(str(st.settled_volume_30d_usd or "0"))
+                raw = st.settled_volume_30d_usd
+                return Decimal(str(raw)) if raw is not None else None
             except Exception as e:
                 print("volume refresh failed:", repr(e), flush=True)
                 return None
@@ -832,8 +833,6 @@ async def main():
             notify("📊", "VIP VOLUME",
                    f"30d settled volume {money(vol)} USDT | next milestone {next_10k:,}",
                    wallet())
-        else:
-            vol, next_10k = Decimal(0), 10000
 
         def beat(now):
             """Heartbeat for the external keepalive: a stale file means we are wedged."""
