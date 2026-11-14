@@ -88,6 +88,25 @@ def volume():
     ])
 
 
+@command("chase", "/chase - every tracked chase score and park cooldown")
+def chase():
+    now = time.time()
+    rows = []
+    for sym in SRC.CHASE_SCORES:
+        score = SRC.chase_score(sym, now)
+        if score <= 0:
+            continue
+        left = SRC.chase_cooldown(sym, now)
+        rows.append((score, sym, f"parked {age_text(left)}" if left > 0 else "clear"))
+    rows.sort(reverse=True)
+    parked = sum(1 for _, _, label in rows if label.startswith("parked"))
+    head = f"🎯 CHASE | {len(rows)} tracked | {parked} parked"
+    if not rows:
+        return head + "\nno chase events"
+    return "\n".join([head] + [f"{sym} {score:.2f} | {label}"
+                               for score, sym, label in rows])
+
+
 def _token_chat():
     return (os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
             os.environ.get("TELEGRAM_CHAT_ID", "").strip())
