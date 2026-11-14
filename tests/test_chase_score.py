@@ -1,8 +1,8 @@
 """Per-asset chase score that parks contested pairs for a while.
 
-An ask chase costs 1, a bail-out costs 2, the score halves every 4 hours,
+An ask chase costs 1, a bail-out costs 2, the score halves every hour,
 and a pair at 0.75 or more is skipped until it decays back under the line.
-One bail-out parks the pair for about 6 hours; one chase for about 2.
+One bail-out parks the pair for about 1.5 hours; one chase for about half an hour.
 
 Usage:  python tests/test_chase_score.py
 Exit 0 = pass, Exit 1 = fail
@@ -48,21 +48,21 @@ check("one chase parks the pair", monitor.chase_parked(SYM, NOW),
 check("a chase is still parked minutes later",
       monitor.chase_parked(SYM, NOW + 240),
       str(monitor.chase_score(SYM, NOW + 240)))
-check("a chase cools off within the half-life",
-      not monitor.chase_parked(SYM, NOW + 2 * 3600),
-      str(monitor.chase_score(SYM, NOW + 2 * 3600)))
+check("a chase cools off in half an hour",
+      not monitor.chase_parked(SYM, NOW + 1800),
+      str(monitor.chase_score(SYM, NOW + 1800)))
 
 monitor.CHASE_SCORES.clear()
 monitor.chase_note("BCH-USDT", monitor.CHASE_BAIL_WEIGHT, NOW)
 check("one bail-out parks the pair",
       monitor.chase_parked("BCH-USDT", NOW),
       str(monitor.chase_score("BCH-USDT", NOW)))
-check("a bail-out is still parked four hours later",
-      monitor.chase_parked("BCH-USDT", NOW + 4 * 3600),
-      str(monitor.chase_score("BCH-USDT", NOW + 4 * 3600)))
-check("a bail-out cools off after about six hours",
-      not monitor.chase_parked("BCH-USDT", NOW + 6 * 3600),
-      str(monitor.chase_score("BCH-USDT", NOW + 6 * 3600)))
+check("a bail-out is still parked an hour later",
+      monitor.chase_parked("BCH-USDT", NOW + 3600),
+      str(monitor.chase_score("BCH-USDT", NOW + 3600)))
+check("a bail-out cools off after about ninety minutes",
+      not monitor.chase_parked("BCH-USDT", NOW + 5400),
+      str(monitor.chase_score("BCH-USDT", NOW + 5400)))
 check("the score survives a restart",
       monitor.chase_load().get("BCH-USDT", (0, 0))[0] == 2.0,
       str(monitor.chase_load()))
