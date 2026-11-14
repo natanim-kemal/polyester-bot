@@ -920,6 +920,9 @@ async def main():
                    f"30d settled volume {vol_money(vol)} USDT | "
                    f"next milestone {vol_next(vol, next_10k):,}",
                    wallet())
+        tg.RUNTIME.update(started=time.time(), tick=time.time(), state="idle",
+                          symbol=None, qty=None,
+                          last_cycle=None, last_fill=None)
         tg.start(sys.modules[__name__])
 
         def beat(now):
@@ -965,10 +968,14 @@ async def main():
                    f"{sym} | sold {num(sold)} @ "
                    f"{num(sell_px) if sell_px else '?'} | fee {money(fees)} USDT",
                    f"{net_txt} | {wallet(base_sym)}")
+            tg.RUNTIME.update(last_cycle=time.time(), last_cycle_sym=sym)
             pos, state = {}, "idle"
 
         while True:
             now = time.time()
+            tg.RUNTIME.update(tick=now, state=state,
+                              symbol=pos.get("symbol"),
+                              qty=pos.get("qty") or pos.get("qty_target"))
             try:
                 mono = time.monotonic()
                 gap = frozen_seconds(now, mono, last_wall, last_mono)
@@ -1159,6 +1166,8 @@ async def main():
                             notify("✅", "BUY FILLED",
                                    f"{sym} | {num(pos['qty'])} @ {num(pos['buy_px'])}",
                                    wallet(sym.split("-")[0]))
+                            tg.RUNTIME.update(last_fill=time.time(),
+                                              last_fill_sym=sym)
                             await place_tp_trigger(c, pos, m)
                             state = "selling"
                         else:
@@ -1193,6 +1202,8 @@ async def main():
                                 notify("✅", "BUY FILLED",
                                        f"{sym} | {num(pos['qty'])} @ {num(pos['buy_px'])}",
                                        wallet(sym.split("-")[0]))
+                                tg.RUNTIME.update(last_fill=time.time(),
+                                                  last_fill_sym=sym)
                                 await place_tp_trigger(c, pos, m)
                                 state = "selling"
                             else:
