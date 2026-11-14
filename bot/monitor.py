@@ -389,7 +389,8 @@ async def chase_buy(c, pos, m, now):
     if st not in TERMINAL:
         try:
             await c.orders.modify(key=ClientOrderId(pos["buy_cid"]),
-                                  symbol=sym, new_price=new_px)
+                                  symbol=sym, new_price=new_px,
+                                  behavior="amend_or_replace")
             pos["buy_px"] = new_px
             pos["buy_at"] = now
             pos["better"] = {}
@@ -1280,7 +1281,8 @@ async def main():
                                     try:
                                         await c.orders.modify(
                                             key=ClientOrderId(pos["sell_cid"]),
-                                            symbol=sym, new_price=new_px)
+                                            symbol=sym, new_price=new_px,
+                                            behavior="amend_or_replace")
                                         pos["ask_px"] = new_px
                                         pos["better"] = {}
                                         pos["bail"] = True
