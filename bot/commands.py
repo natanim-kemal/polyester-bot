@@ -11,6 +11,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from decimal import Decimal
 
 VOLUME = {}
 RUNTIME = {}
@@ -142,6 +143,47 @@ def status():
 
     lines.append(f"last cycle {stamp(RUNTIME.get('last_cycle'))} | "
                  f"last fill {stamp(RUNTIME.get('last_fill'))}")
+    return "\n".join(lines)
+
+
+@command("balance", "/balance - USDT and every held asset marked at mid")
+def balance():
+    try:
+        rows = SRC.rest_balances()
+    except Exception as e:
+        return f"💰 BALANCE\nbalance read failed: {e}"
+    quote = SRC.QUOTE
+    usdt = Decimal(0)
+    held = []
+    for row in rows:
+        sym = row.get("symbol")
+        amt = Decimal(row.get("trading") or 0)
+        if amt <= 0:
+            continue
+        if sym == quote:
+            usdt = amt
+            continue
+        pair = sym + "-" + quote
+        bk = SRC.ws_book(pair, 15.0)
+        mid = None
+        if bk is not None and bk.bids and bk.asks:
+            mid = (SRC.pdec(bk.bids[0].price) + SRC.pdec(bk.asks[0].price)) / 2
+        held.append((sym, amt, mid))
+    lines = ["💰 BALANCE", f"{quote} {SRC.money(usdt)}"]
+    total, unmarked = usdt, 0
+    for sym, amt, mid in held:
+        if mid is None:
+            lines.append(f"{sym} {SRC.num(amt)} | no mark")
+            unmarked += 1
+        else:
+            value = amt * mid
+            total += value
+            lines.append(f"{sym} {SRC.num(amt)} @ {SRC.num(mid)} = "
+                         f"{SRC.money(value)}")
+    tail = f"total {SRC.money(total)} {quote}"
+    if unmarked:
+        tail += f" | {unmarked} unmarked"
+    lines.append(tail)
     return "\n".join(lines)
 
 
