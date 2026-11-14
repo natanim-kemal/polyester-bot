@@ -93,7 +93,7 @@ def volume():
 def chase():
     now = time.time()
     rows = []
-    for sym in SRC.CHASE_SCORES:
+    for sym in list(SRC.CHASE_SCORES):
         score = SRC.chase_score(sym, now)
         if score <= 0:
             continue
