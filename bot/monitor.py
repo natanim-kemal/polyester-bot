@@ -33,8 +33,10 @@ except Exception:
     pass
 
 if __package__:
+    from . import commands as tg
     from .paths import HERE, env_files, state_file
 else:
+    import commands as tg
     from paths import HERE, env_files, state_file
 
 
@@ -888,19 +890,28 @@ async def main():
             try:
                 st = await c.vip.get_vip_status()
                 raw = st.settled_volume_30d_usd
-                return Decimal(str(raw)) if raw is not None else None
+                if raw is None:
+                    return None
+                snap = {"vol": Decimal(str(raw)),
+                        "tier": getattr(st, "tier", None),
+                        "as_of": getattr(st, "metrics_as_of", None),
+                        "checked_at": time.time()}
+                tg.VOLUME.update(snap)
+                return snap
             except Exception as e:
                 print("volume refresh failed:", repr(e), flush=True)
                 return None
 
-        vol, next_10k, vol_shown = await refresh_volume(), None, None
-        if vol is not None:
+        vol, next_10k = None, None
+        first = await refresh_volume()
+        if first is not None:
+            vol = first["vol"]
             next_10k = (int(vol // 10000) + 1) * 10000
-            vol_shown = vol
             notify("📊", "VIP VOLUME",
                    f"30d settled volume {vol_money(vol)} USDT | "
                    f"next milestone {vol_next(vol, next_10k):,}",
                    wallet())
+        tg.start(sys.modules[__name__])
 
         def beat(now):
             """Heartbeat for the external keepalive: a stale file means we are wedged."""
@@ -912,7 +923,7 @@ async def main():
 
         async def cycle_done(sym, sell_px):
             """Close a cycle from balance truth; alert with balances + volume."""
-            nonlocal vol, next_10k, vol_shown, pos, state
+            nonlocal vol, next_10k, pos, state
             await cancel_tp_trigger(c, pos)
             await cancel_stale_symbol_orders(c, sym)
             base_sym = sym.split("-")[0]
@@ -935,18 +946,12 @@ async def main():
             buy_side = basis if basis > 0 else sell_px
             fresh = await refresh_volume()
             if fresh is not None:
-                vol = fresh
+                vol = fresh["vol"]
                 crossed, next_10k = crossed_milestones(vol, next_10k)
                 for line in crossed:
                     notify("🏆", "MILESTONE",
                            f"{line:,} USDT VIP 30d volume | {vol_money(vol)} USDT",
                            f"{money(vol - line)} USDT over the line | {wallet()}")
-                if vol_shown is None or fresh != vol_shown:
-                    vol_shown = fresh
-                    notify("📊", "VIP VOLUME",
-                           f"30d settled volume {vol_money(fresh)} USDT | "
-                           f"next milestone {vol_next(fresh, next_10k):,}",
-                           wallet())
             notify("✅", "CYCLE DONE",
                    f"{sym} | sold {num(sold)} @ "
                    f"{num(sell_px) if sell_px else '?'} | fee {money(fees)} USDT",
