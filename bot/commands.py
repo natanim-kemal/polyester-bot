@@ -33,7 +33,7 @@ def age_text(seconds):
     seconds = max(0, int(seconds))
     if seconds < 120:
         return f"{seconds}s"
-    if seconds < 7200:
+    if seconds < 3600:
         return f"{seconds // 60}m"
     return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
 
@@ -105,6 +105,44 @@ def chase():
         return head + "\nno chase events"
     return "\n".join([head] + [f"{sym} {score:.2f} | {label}"
                                for score, sym, label in rows])
+
+
+@command("status", "/status - heartbeat, state, open orders, last cycle")
+def status():
+    now = time.time()
+    tick = RUNTIME.get("tick")
+    if not tick:
+        return "💓 STATUS\nno loop tick yet"
+    age = max(0.0, now - tick)
+    lines = [
+        "💓 STATUS",
+        f"heartbeat {age_text(age)} ago | {health(age)} | "
+        f"uptime {age_text(now - RUNTIME.get('started', now))}",
+    ]
+    state = RUNTIME.get("state") or "?"
+    sym = RUNTIME.get("symbol")
+    qty = RUNTIME.get("qty")
+    where = state + (f" {sym}" if sym else "")
+    if qty:
+        where += f" {SRC.num(qty)}"
+    try:
+        orders = len([o for o in SRC.rest_open_orders().get("orders", [])
+                      if str(o.get("clientOrderId", "")).startswith("gap1-")])
+        open_txt = str(orders)
+    except Exception as e:
+        print("status order read failed:", repr(e), flush=True)
+        open_txt = "?"
+    lines.append(f"state {where} | open orders {open_txt}")
+
+    def stamp(t):
+        if not t:
+            return "none"
+        return (f"{time.strftime('%H:%M UTC', time.gmtime(t))} "
+                f"({age_text(now - t)} ago)")
+
+    lines.append(f"last cycle {stamp(RUNTIME.get('last_cycle'))} | "
+                 f"last fill {stamp(RUNTIME.get('last_fill'))}")
+    return "\n".join(lines)
 
 
 def _token_chat():

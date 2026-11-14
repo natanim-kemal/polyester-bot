@@ -105,12 +105,17 @@ META = {"ARB-USDT": {"tick": Decimal("0.0001"), "step": Decimal("0.1"),
                      "min_notional": Decimal("5"), "min_qty": Decimal("1"), "scale": 8}}
 
 
+class FakeTG:
+    RUNTIME = {}
+
+
 def build_ns():
     ns = {
         "Decimal": Decimal, "ROUND_FLOOR": ROUND_FLOOR, "time": time,
         "notify": fake_notify, "cycle_done": fake_cycle_done,
         "alert": lambda text: alerts.append(text),
         "wallet": lambda base=None: "USDT 2.99",
+        "tg": FakeTG,
         "order_state": fake_order_state_filled,
         "base_balance": fake_base_balance,
         "rest_asset_balance": lambda base: (Decimal(0), Decimal(0)),
