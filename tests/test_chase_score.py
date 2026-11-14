@@ -1,8 +1,8 @@
 """Per-asset chase score that parks contested pairs for a while.
 
 An ask chase costs 1, a bail-out costs 2, the score halves every 4 hours,
-and a pair at 2 or more is skipped until it decays back under the line.
-One bail-out therefore parks the pair immediately; two chases do too.
+and a pair at 0.75 or more is skipped until it decays back under the line.
+One bail-out parks the pair for about 6 hours; one chase for about 2.
 
 Usage:  python tests/test_chase_score.py
 Exit 0 = pass, Exit 1 = fail
@@ -43,26 +43,26 @@ check("a fresh pair is not parked", not monitor.chase_parked(SYM, NOW),
       str(monitor.chase_score(SYM, NOW)))
 
 monitor.chase_note(SYM, monitor.CHASE_ASK_WEIGHT, NOW)
-check("one chase is tolerated", not monitor.chase_parked(SYM, NOW),
+check("one chase parks the pair", monitor.chase_parked(SYM, NOW),
       str(monitor.chase_score(SYM, NOW)))
-
-monitor.chase_note(SYM, monitor.CHASE_ASK_WEIGHT, NOW)
-check("two chases park the pair", monitor.chase_parked(SYM, NOW),
-      str(monitor.chase_score(SYM, NOW)))
-
-parked_at = monitor.chase_score(SYM, NOW)
-decayed = monitor.chase_score(SYM, NOW + monitor.CHASE_HALF_LIFE)
-check("the score halves after 4 hours", abs(parked_at / 2 - decayed) < 1e-9,
-      "%s -> %s" % (parked_at, decayed))
-check("the pair is tradeable again after the cooldown",
-      not monitor.chase_parked(SYM, NOW + monitor.CHASE_HALF_LIFE),
-      str(decayed))
+check("a chase is still parked minutes later",
+      monitor.chase_parked(SYM, NOW + 240),
+      str(monitor.chase_score(SYM, NOW + 240)))
+check("a chase cools off within the half-life",
+      not monitor.chase_parked(SYM, NOW + 2 * 3600),
+      str(monitor.chase_score(SYM, NOW + 2 * 3600)))
 
 monitor.CHASE_SCORES.clear()
 monitor.chase_note("BCH-USDT", monitor.CHASE_BAIL_WEIGHT, NOW)
-check("one bail-out parks the pair immediately",
+check("one bail-out parks the pair",
       monitor.chase_parked("BCH-USDT", NOW),
       str(monitor.chase_score("BCH-USDT", NOW)))
+check("a bail-out is still parked four hours later",
+      monitor.chase_parked("BCH-USDT", NOW + 4 * 3600),
+      str(monitor.chase_score("BCH-USDT", NOW + 4 * 3600)))
+check("a bail-out cools off after about six hours",
+      not monitor.chase_parked("BCH-USDT", NOW + 6 * 3600),
+      str(monitor.chase_score("BCH-USDT", NOW + 6 * 3600)))
 check("the score survives a restart",
       monitor.chase_load().get("BCH-USDT", (0, 0))[0] == 2.0,
       str(monitor.chase_load()))
