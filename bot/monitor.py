@@ -865,21 +865,28 @@ async def main():
                 net_txt = f"net {net:+.2f} USDT"
             else:
                 net_txt = "P&L unknown (fill price not observed)"
+            buy_side = basis if basis > 0 else sell_px
+            fresh = await refresh_volume()
+            vol_line = f" | vip30 {money(fresh)}" if fresh is not None else ""
+            if fresh is not None:
+                if vol is None or vol == 0:
+                    vol = fresh
+                    next_10k = (int(vol // 10000) + 1) * 10000
+                elif fresh > vol:
+                    new_bounds = int(fresh) // 10000 - int(vol) // 10000
+                    vol = fresh
+                    while new_bounds > 0:
+                        notify("🏆", "MILESTONE",
+                               f"{next_10k:,} USDT VIP 30d volume | {money(vol)} USDT",
+                               f"{money(vol - next_10k)} USDT over the line | {wallet()}")
+                        next_10k += 10000
+                        new_bounds -= 1
+                else:
+                    vol = fresh
             notify("✅", "CYCLE DONE",
                    f"{sym} | sold {num(sold)} @ "
                    f"{num(sell_px) if sell_px else '?'} | fee {money(fees)} USDT",
-                   f"{net_txt} | {wallet(base_sym)}")
-            buy_side = basis if basis > 0 else sell_px
-            fresh = await refresh_volume()
-            if fresh is not None:
-                if vol is None or vol == 0:
-                    next_10k = (int(fresh // 10000) + 1) * 10000
-                vol = fresh
-            while vol is not None and vol >= next_10k:
-                notify("🏆", "MILESTONE",
-                       f"{next_10k:,} USDT VIP 30d volume | {money(vol)} USDT",
-                       f"{money(vol - next_10k)} USDT over the line | {wallet()}")
-                next_10k += 10000
+                   f"{net_txt} | {wallet(base_sym)}{vol_line}")
             pos, state = {}, "idle"
 
         while True:
