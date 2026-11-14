@@ -21,7 +21,7 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
-from decimal import Decimal, ROUND_FLOOR
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 
 import nacl.signing
 from polyester import POLYESTER_TESTNET_ENVIRONMENT, AsyncPolyester
@@ -236,6 +236,20 @@ def money(x):
 def num(x):
     s = f"{Decimal(x):,.8f}".rstrip("0").rstrip(".")
     return s or "0"
+
+
+def vol_money(x):
+    return money(Decimal(x).quantize(Decimal("1E4"), rounding=ROUND_HALF_UP))
+
+
+def crossed_milestones(vol, next_10k):
+    if next_10k is None:
+        next_10k = (int(vol // 10000) + 1) * 10000
+    crossed = []
+    while vol >= next_10k:
+        crossed.append(next_10k)
+        next_10k += 10000
+    return crossed, next_10k
 
 
 def wallet(base=None):
@@ -827,11 +841,12 @@ async def main():
                 print("volume refresh failed:", repr(e), flush=True)
                 return None
 
-        vol, next_10k = await refresh_volume(), None
+        vol, next_10k, vol_shown = await refresh_volume(), None, None
         if vol is not None:
             next_10k = (int(vol // 10000) + 1) * 10000
+            vol_shown = vol
             notify("📊", "VIP VOLUME",
-                   f"30d settled volume {money(vol)} USDT | next milestone {next_10k:,}",
+                   f"30d settled volume {vol_money(vol)} USDT | next milestone {next_10k:,}",
                    wallet())
 
         def beat(now):
@@ -844,7 +859,7 @@ async def main():
 
         async def cycle_done(sym, sell_px):
             """Close a cycle from balance truth; alert with balances + volume."""
-            nonlocal vol, next_10k, pos, state
+            nonlocal vol, next_10k, vol_shown, pos, state
             await cancel_tp_trigger(c, pos)
             await cancel_stale_symbol_orders(c, sym)
             base_sym = sym.split("-")[0]
@@ -866,26 +881,23 @@ async def main():
                 net_txt = "P&L unknown (fill price not observed)"
             buy_side = basis if basis > 0 else sell_px
             fresh = await refresh_volume()
-            vol_line = f" | vip30 {money(fresh)}" if fresh is not None else ""
             if fresh is not None:
-                if vol is None or vol == 0:
-                    vol = fresh
-                    next_10k = (int(vol // 10000) + 1) * 10000
-                elif fresh > vol:
-                    new_bounds = int(fresh) // 10000 - int(vol) // 10000
-                    vol = fresh
-                    while new_bounds > 0:
-                        notify("🏆", "MILESTONE",
-                               f"{next_10k:,} USDT VIP 30d volume | {money(vol)} USDT",
-                               f"{money(vol - next_10k)} USDT over the line | {wallet()}")
-                        next_10k += 10000
-                        new_bounds -= 1
-                else:
-                    vol = fresh
+                vol = fresh
+                crossed, next_10k = crossed_milestones(vol, next_10k)
+                for line in crossed:
+                    notify("🏆", "MILESTONE",
+                           f"{line:,} USDT VIP 30d volume | {vol_money(vol)} USDT",
+                           f"{money(vol - line)} USDT over the line | {wallet()}")
+                if vol_shown is None or fresh != vol_shown:
+                    vol_shown = fresh
+                    notify("📊", "VIP VOLUME",
+                           f"30d settled volume {vol_money(fresh)} USDT | "
+                           f"next milestone {next_10k:,}",
+                           wallet())
             notify("✅", "CYCLE DONE",
                    f"{sym} | sold {num(sold)} @ "
                    f"{num(sell_px) if sell_px else '?'} | fee {money(fees)} USDT",
-                   f"{net_txt} | {wallet(base_sym)}{vol_line}")
+                   f"{net_txt} | {wallet(base_sym)}")
             pos, state = {}, "idle"
 
         while True:
