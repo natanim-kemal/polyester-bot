@@ -160,6 +160,8 @@ ns = {
     "next_block_alert": 0.0, "sat": {"n": 0},
     "adopt_q": [],
     "chase_parked": lambda sym, now: False,
+    "calmest": lambda rows, now, limit=3: sorted(rows, key=lambda r: r[0], reverse=True)[:limit],
+    "chase_allowed": lambda pos, now: True,
 }
 exec(compile("async def idle_step(c, pairs):\n"
              "    global now, next_scan, next_fallback, next_block_alert\n"
