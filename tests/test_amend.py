@@ -229,6 +229,7 @@ def run_sell(fail_modify):
         "CHASE_ASK_WEIGHT": monitor.CHASE_ASK_WEIGHT,
         "CHASE_BAIL_WEIGHT": monitor.CHASE_BAIL_WEIGHT,
         "chase_allowed": lambda pos, now: True,
+        "churn_note": lambda *a: None,
     }
     exec(compile("async def selling_step(c, pos, meta, now):\n"
                  + textwrap.indent(seg(state_branch("selling").body), "    "),
@@ -258,6 +259,16 @@ check("the legacy path keeps its alert", "ASK BAIL-OUT" in alerts, str(alerts))
 check("every amend asks to amend or replace in place",
       modify_behavior and all(b == "amend_or_replace" for b in modify_behavior),
       str(modify_behavior))
+
+check("a trailing-zero pair takes the bid on a bail-out",
+      monitor.bail_target("SHIB-USDT", Decimal("9.5"), Decimal("9.7"),
+                          Decimal("0.1")) == (Decimal("9.5"), True))
+check("any other pair rests one tick under the best ask",
+      monitor.bail_target("ARB-USDT", Decimal("9.5"), Decimal("9.7"),
+                          Decimal("0.1")) == (Decimal("9.6"), False))
+check("a trailing-zero pair with an empty bid still rests",
+      monitor.bail_target("DOGE-USDT", Decimal("0"), Decimal("9.7"),
+                          Decimal("0.1")) == (Decimal("9.6"), False))
 
 print()
 print("PASS: chases amend in place, cancel only when truly needed" if ok else "FAIL")
