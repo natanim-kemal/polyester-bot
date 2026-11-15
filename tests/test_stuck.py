@@ -123,6 +123,7 @@ def build_ns():
         "pairs": META,
         "carry": {}, "dust": {}, "adopt_q": [],
         "calmest": lambda rows, now, limit=3: sorted(rows, key=lambda r: r[0], reverse=True)[:limit],
+        "calm_streak_update": lambda rows, now, limit=3: None,
         "chase_allowed": lambda pos, now: True,
         "churn_note": lambda *a: None,
         "state": "buying", "now": 100.0,
