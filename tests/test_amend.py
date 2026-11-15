@@ -109,6 +109,8 @@ async def clear_place(c, sym, side, qty, price, post_only=False):
 monitor.place = fake_place
 monitor.notify = lambda emoji, action, *lines: alerts.append(action)
 monitor.wallet = lambda base=None: "USDT 2.99"
+monitor.rest_balances = lambda: [
+    {"symbol": "USDT", "trading": "10000", "available": "10000"}]
 
 
 def buy_pos():
