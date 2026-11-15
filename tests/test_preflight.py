@@ -160,6 +160,7 @@ ns = {
     "adopt_q": [],
     "chase_parked": lambda sym, now: False,
     "calmest": lambda rows, now, limit=3: sorted(rows, key=lambda r: r[0], reverse=True)[:limit],
+    "calm_streak_update": lambda rows, now, limit=3: None,
     "chase_allowed": lambda pos, now: True,
 }
 exec(compile("async def idle_step(c, pairs):\n"

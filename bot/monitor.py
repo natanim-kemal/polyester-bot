@@ -82,6 +82,7 @@ CHASE_HALF_LIFE = 3600
 CHASE_ASK_WEIGHT = 1.0
 CHASE_BAIL_WEIGHT = 2.0
 CHASE_PARK_SCORE = 0.75
+CHASE_RELEASE_SECONDS = float(os.environ.get("CHASE_RELEASE_SECONDS", "300"))
 BAIL_TAKER = {s.strip().upper() for s in
               os.environ.get("BAIL_TAKER", "SHIB,DOGE,BONK").split(",") if s.strip()}
 CHURN_WINDOW = float(os.environ.get("CHURN_WINDOW_SECONDS", "600"))
@@ -585,6 +586,25 @@ def chase_allowed(pos, now):
     return now - start >= CHASE_MIN_CYCLE_SECONDS
 
 
+CALM_STREAK = {}
+
+
+def calm_streak_update(rows, now, limit=CHURN_SHORTLIST):
+    """Sitting in the calm top-3 for CHASE_RELEASE_SECONDS releases the park
+    and resets the pair's chase score to zero."""
+    top = {r[1] for r in calmest(rows, now, limit)}
+    for sym in list(CALM_STREAK):
+        if sym not in top:
+            del CALM_STREAK[sym]
+    for sym in top:
+        first = CALM_STREAK.setdefault(sym, now)
+        if now - first >= CHASE_RELEASE_SECONDS and \
+                chase_score(sym, now) >= CHASE_PARK_SCORE:
+            CHASE_SCORES[sym] = (0.0, now)
+            chase_save()
+            print("chase park cleared", sym, flush=True)
+
+
 async def preflight_buy(c, sym, side, qty, price):
     """Ask the exchange whether the buy would be admissible. Fail-open: only
     a clear rejection blocks; an outage proceeds."""
@@ -1066,6 +1086,7 @@ async def main():
                     if now >= next_scan:
                         next_scan = now + SCAN_SECONDS
                         rows = await scan_books(c, pairs)
+                        calm_streak_update(rows, now)
                         ours = [o for o in rest_open_orders().get("orders", [])
                                 if str(o.get("clientOrderId", "")).startswith("gap1-")]
                         held = []

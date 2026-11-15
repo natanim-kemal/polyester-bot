@@ -12,6 +12,7 @@ Exit 0 = pass, Exit 1 = fail
 
 import os
 import sys
+import tempfile
 from collections import deque
 from decimal import Decimal
 
@@ -79,6 +80,35 @@ check("a cycle three minutes in does score",
       monitor.chase_allowed({"buy_at": now - 180}, now))
 check("an adopted position three minutes in does score",
       monitor.chase_allowed({"since": now - 181}, now))
+
+STATE = os.path.join(tempfile.mkdtemp(prefix="polyester-test-"),
+                     "chase_state.json")
+monitor.state_file = lambda name: STATE
+monitor.CHASE_SCORES.clear()
+monitor.CALM_STREAK.clear()
+T = 1000.0
+monitor.CHASE_SCORES["ARB-USDT"] = (2.0, T)
+rows3 = [(Decimal("0.5"), "ARB-USDT"), (Decimal("0.4"), "BCH-USDT"),
+         (Decimal("0.3"), "BONK-USDT")]
+monitor.calm_streak_update(rows3, T)
+check("one calm scan does not clear the park",
+      monitor.chase_score("ARB-USDT", T) >= monitor.CHASE_PARK_SCORE)
+monitor.calm_streak_update(rows3, T + 290)
+check("under five minutes the park stays",
+      monitor.chase_score("ARB-USDT", T + 290) >= monitor.CHASE_PARK_SCORE)
+monitor.calm_streak_update(rows3, T + 300)
+check("five calm minutes clear the park",
+      monitor.chase_score("ARB-USDT", T + 300) == 0.0,
+      str(monitor.chase_score("ARB-USDT", T + 300)))
+monitor.CHASE_SCORES["BCH-USDT"] = (2.0, T)
+monitor.CALM_STREAK.clear()
+monitor.calm_streak_update(rows3, T)
+check("a streak is tracked while in the shortlist", "BCH-USDT" in monitor.CALM_STREAK)
+rows_no_bch = [(Decimal("0.5"), "ARB-USDT"), (Decimal("0.4"), "BONK-USDT"),
+               (Decimal("0.3"), "ETC-USDT")]
+monitor.calm_streak_update(rows_no_bch, T + 30)
+check("leaving the shortlist resets the streak", "BCH-USDT" not in monitor.CALM_STREAK)
+monitor.CHASE_SCORES.clear()
 
 print()
 print("PASS: the bot trades the calmest books first" if ok else "FAIL")

@@ -49,7 +49,8 @@ verifies the exchange and Telegram before writing anything.
   (atomic, order id kept), cancel only when the amend cannot. Chase score halves hourly;
   pairs above 0.75 are parked. A cycle must live 3 minutes before it can add any chase score.
   Bail-out re-asks rest one tick under the best ask, except `BAIL_TAKER` pairs
-  (default SHIB, DOGE, BONK) which take the bid for a guaranteed fill.
+  (default SHIB, DOGE, BONK) which take the bid for a guaranteed fill. A parked pair
+  that sits in the calm top-3 for five straight minutes is released and its score resets.
 - **Volatility index** — per-asset top-of-book churn from the WS feed (changes/min
   over a 10-minute window); candidates rank calmest-first, ties by gap, shortlist of 3.
 - **Volume fallback** — deepest market-maker churn if no profitable gap; escalation
