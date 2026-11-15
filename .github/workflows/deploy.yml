@@ -49,7 +49,6 @@ jobs:
           python3 tests/test_amend.py
           python3 tests/test_tp_trigger.py
           python3 tests/test_ws.py
-          python3 tests/test_liquidity.py
           python3 tests/test_equity.py
           python3 tests/test_preflight.py
           python3 tests/test_orphan.py

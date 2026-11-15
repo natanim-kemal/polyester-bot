@@ -139,7 +139,6 @@ ns = {
     "scan_books": fake_scan_books,
     "rest_balances": lambda: [{"symbol": "USDT", "trading": "10000", "available": "10000"}],
     "rest_open_orders": lambda: {"orders": []},
-    "pick_best_liquid": None,
     "place": fake_place,
     "preflight_buy": fake_preflight_reject,
     "pdec": monitor.pdec, "floor_step": monitor.floor_step,
