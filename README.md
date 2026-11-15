@@ -46,7 +46,10 @@ verifies the exchange and Telegram before writing anything.
 - **Gap mode** — buys the bid, asks under the offer, bot chasing every 2s:
   two contiguous lines per action, Telegram alerts on fills, skips, milestones.
 - **Chase (both sides)** — orders are **amended** one tick past a competing ask/bid
-  (atomic, order id kept), cancel only when the amend cannot.
+  (atomic, order id kept), cancel only when the amend cannot. Chase score halves hourly;
+  pairs above 0.75 are parked. A cycle must live 3 minutes before it can add any chase score.
+- **Volatility index** — per-asset top-of-book churn from the WS feed (changes/min
+  over a 10-minute window); candidates rank calmest-first, ties by gap, shortlist of 3.
 - **Volume fallback** — deepest market-maker churn if no profitable gap; escalation
   ladder pennies the bid then crosses the spread as timeouts repeat.
 - **Dead-man switch** — `cancel_all_after` re-arms every 60s; if the VM freezes/dies,
