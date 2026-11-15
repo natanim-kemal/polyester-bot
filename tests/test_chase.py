@@ -100,6 +100,8 @@ monitor.place = fake_place
 monitor.order_state = open_state
 monitor.notify = lambda emoji, action, *lines: alerts.append(action)
 monitor.wallet = lambda base=None: "USDT 2.99"
+monitor.rest_balances = lambda: [
+    {"symbol": "USDT", "trading": "10000", "available": "10000"}]
 
 
 def new_pos(buy_px):
@@ -158,6 +160,23 @@ asyncio.run(step(c, pos, 155.0))                    # only 15s old again
 check("a flickering competitor never triggers a chase",
       cancel_calls == [] and placed == [],
       f"cancels={cancel_calls} placed={placed}")
+
+# An all-in bid that can no longer afford the re-bid is left alone, not cancelled.
+cancel_calls.clear()
+placed.clear()
+alerts.clear()
+monitor.WS_BOOKS.clear()
+monitor.rest_balances = lambda: [
+    {"symbol": "USDT", "trading": "0", "available": "0"}]
+c3 = FakeC(["0.1671"], ["0.1690"])
+p3 = new_pos(Decimal("0.1670"))
+asyncio.run(step(c3, p3, 100.0))               # competitor appears
+asyncio.run(step(c3, p3, 100.0 + PERSIST))     # aged; amend will fail
+check("an unaffordable chase keeps the resting bid",
+      cancel_calls == [] and placed == [] and p3["buy_cid"] == "cid-1",
+      f"cancels={cancel_calls} placed={placed} cid={p3['buy_cid']}")
+monitor.rest_balances = lambda: [
+    {"symbol": "USDT", "trading": "10000", "available": "10000"}]
 
 # The sell side: the bail-out must fire on ONE better ask now.
 src = open(os.path.join(HERE, "..", "bot", "monitor.py"), encoding="utf-8").read()
