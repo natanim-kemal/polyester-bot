@@ -89,6 +89,23 @@ def volume():
     ])
 
 
+@command("vol", "/vol - volatility index per pair, calmest first")
+def vol():
+    now = time.time()
+    rows = []
+    for sym in list(SRC.CHURN):
+        rows.append((SRC.churn(sym, now), sym))
+    if not rows:
+        return "🌬️ INDEX\nno book data yet"
+    rows.sort()
+    calm = set(sym for _, sym in rows[:SRC.CHURN_SHORTLIST])
+    lines = ["🌬️ INDEX | calmest first"]
+    lines.extend(f"{sym} {c:.1f}/min" + (" | shortlist" if sym in calm else "")
+                 for c, sym in rows)
+    lines.append(f"{len(rows)} tracked | last {SRC.CHURN_WINDOW / 60:.0f}m")
+    return "\n".join(lines)
+
+
 @command("chase", "/chase - every tracked chase score and park cooldown")
 def chase():
     now = time.time()
