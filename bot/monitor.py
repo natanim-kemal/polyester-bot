@@ -82,6 +82,8 @@ CHASE_HALF_LIFE = 3600
 CHASE_ASK_WEIGHT = 1.0
 CHASE_BAIL_WEIGHT = 2.0
 CHASE_PARK_SCORE = 0.75
+BAIL_TAKER = {s.strip().upper() for s in
+              os.environ.get("BAIL_TAKER", "SHIB,DOGE,BONK").split(",") if s.strip()}
 CHURN_WINDOW = float(os.environ.get("CHURN_WINDOW_SECONDS", "600"))
 CHURN_SHORTLIST = int(os.environ.get("CHURN_SHORTLIST", "3"))
 CHASE_MIN_CYCLE_SECONDS = float(os.environ.get("CHASE_MIN_CYCLE_SECONDS", "180"))
@@ -638,9 +640,16 @@ async def book(c, sym, depth=10, max_age=15.0):
     """Orderbook for one pair: the WS-fed snapshot when fresh, REST otherwise."""
     cached = ws_book(sym, max_age)
     if cached is not None:
-        return cached
-    bk = await c.orderbook.get(symbol=sym, depth=depth)
-    WS_BOOKS[sym] = (bk, time.monotonic())
+        bk = cached
+    else:
+        bk = await c.orderbook.get(symbol=sym, depth=depth)
+        WS_BOOKS[sym] = (bk, time.monotonic())
+    try:
+        if bk.bids and bk.asks:
+            churn_note(sym, pdec(bk.bids[0].price), pdec(bk.asks[0].price),
+                       time.time())
+    except Exception:
+        pass
     return bk
 
 
@@ -697,12 +706,6 @@ async def run_books_ws(c, ids, stop):
                 async for data in sub:
                     if getattr(data, "available", True):
                         WS_BOOKS[sym] = (data, time.monotonic())
-                        try:
-                            if data.bids and data.asks:
-                                churn_note(sym, pdec(data.bids[0].price),
-                                           pdec(data.asks[0].price), time.time())
-                        except Exception:
-                            pass
                     if stop.is_set():
                         break
             except Exception as e:
@@ -735,6 +738,13 @@ async def scan_books(c, pairs):
     return rows
 
 
+def bail_target(sym, best_bid, best_ask, tick):
+    """Bail-out re-ask: take the bid on trailing-zero pairs, else one tick under."""
+    if sym.split("-")[0] in BAIL_TAKER and best_bid > 0:
+        return best_bid, True
+    return best_ask - tick, False
+
+
 async def place_sell(c, pos, meta):
     sym = pos["symbol"]
     base = sym.split("-")[0]
@@ -747,9 +757,9 @@ async def place_sell(c, pos, meta):
     spread = ((best_ask - best_bid) / ((best_ask + best_bid) / 2) * 100
               if best_bid else Decimal(0))
     basis = pos.get("buy_px") or Decimal(0)
-    taker = bool(pos.get("bail"))
-    if taker:
-        target = best_bid if best_bid > 0 else best_ask - tick
+    taker = False
+    if pos.get("bail"):
+        target, taker = bail_target(sym, best_bid, best_ask, tick)
     elif pos.get("join_ask"):
         target = max(best_ask, basis) if basis > 0 else best_ask
     elif basis > 0:

@@ -30,6 +30,8 @@ except Exception:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "bot", "monitor.py")
+sys.path.insert(0, os.path.join(HERE, "..", "bot"))
+import monitor  # noqa: E402
 src = open(SRC, encoding="utf-8").read()
 lines = src.splitlines()
 tree = ast.parse(src)
@@ -189,6 +191,7 @@ ns = {
     "CHASE_ASK_WEIGHT": 1.0,
     "CHASE_BAIL_WEIGHT": 2.0,
     "chase_allowed": lambda pos, now: True,
+    "bail_target": monitor.bail_target,
 }
 
 for fn in ("pdec", "floor_step", "money", "num", "notify"):
@@ -228,9 +231,9 @@ print("bail-out alerts:", len(bails))
 print("position flags:", {k: pos.get(k) for k in ("sell_cid", "canceling", "bail", "ask_px")})
 
 ok = (len(bails) == 1 and len(cancels) == 1 and len(asks) == 2
-      and asks[1][3] == "9.5" and ex.places[-1] == (Decimal("9.5"), False))
+      and asks[1][3] == "9.6" and ex.places[-1] == (Decimal("9.6"), True))
 if ok:
-    print("\nPASS: one bail-out -> cancel -> re-ask at the bid -> ask rests")
+    print("\nPASS: one bail-out -> cancel -> re-ask under the ask -> ask rests")
     sys.exit(0)
 print("\nFAIL: cancel storm - the bot keeps canceling the ask it just placed"
       if len(cancels) > 1 else "\nFAIL: unexpected behaviour")

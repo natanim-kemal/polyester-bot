@@ -48,6 +48,8 @@ verifies the exchange and Telegram before writing anything.
 - **Chase (both sides)** — orders are **amended** one tick past a competing ask/bid
   (atomic, order id kept), cancel only when the amend cannot. Chase score halves hourly;
   pairs above 0.75 are parked. A cycle must live 3 minutes before it can add any chase score.
+  Bail-out re-asks rest one tick under the best ask, except `BAIL_TAKER` pairs
+  (default SHIB, DOGE, BONK) which take the bid for a guaranteed fill.
 - **Volatility index** — per-asset top-of-book churn from the WS feed (changes/min
   over a 10-minute window); candidates rank calmest-first, ties by gap, shortlist of 3.
 - **Volume fallback** — deepest market-maker churn if no profitable gap; escalation

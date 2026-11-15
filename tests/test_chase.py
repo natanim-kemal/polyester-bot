@@ -202,6 +202,7 @@ ns = {
     "CHASE_ASK_WEIGHT": monitor.CHASE_ASK_WEIGHT,
     "CHASE_BAIL_WEIGHT": monitor.CHASE_BAIL_WEIGHT,
     "chase_allowed": lambda pos, now: True,
+    "churn_note": lambda *a: None,
 }
 exec(compile("async def selling_step(c, pos, meta, now):\n"
              + textwrap.indent(seg(state_branch("selling").body), "    "),
