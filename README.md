@@ -88,6 +88,7 @@ automatic volume heartbeat floods the chat.
 | Command | Reply |
 |---|---|
 | `/volume` | VIP 30d settled volume, next milestone, API snapshot time, reading age |
+| `/vol` | volatility index per pair, calmest first, shortlist marked |
 | `/chase` | every tracked pair's chase score and remaining park time |
 | `/status` | loop heartbeat (`ok` / `slow` / `stuck`), state, position, open orders, uptime, last cycle and fill |
 | `/balance` | USDT plus every held asset marked at mid |
