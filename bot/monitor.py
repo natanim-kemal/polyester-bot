@@ -746,10 +746,13 @@ async def place_sell(c, pos, meta):
             pos["better"], pos["ask_at"] = {}, time.time()
             pnl_txt = (f"expected {(price - basis) * q * Decimal('0.998'):+.2f} USDT"
                        if basis > 0 else "expected P&L unknown (no basis)")
-            notify("🔵", "ASK",
-                   f"{sym} | gap {spread:.3f}% | {num(q)} @ {num(price)} | "
-                   f"bought @ {num(basis) if basis else '?'}",
-                   f"{pnl_txt} | {wallet(base)}")
+            state = (price, q, basis)
+            if pos.get("last_ask_alert") != state:
+                notify("🔵", "ASK",
+                       f"{sym} | gap {spread:.3f}% | {num(q)} @ {num(price)} | "
+                       f"bought @ {num(basis) if basis else '?'}",
+                       f"{pnl_txt} | {wallet(base)}")
+                pos["last_ask_alert"] = state
             return True
     if err and "insufficient" in err.lower():
         try:
@@ -961,10 +964,17 @@ async def main():
             if fresh is not None:
                 vol = fresh["vol"]
                 crossed, next_10k = crossed_milestones(vol, next_10k)
-                for line in crossed:
-                    notify("🏆", "MILESTONE",
-                           f"{line:,} USDT VIP 30d volume | {vol_money(vol)} USDT",
-                           f"{money(vol - line)} USDT over the line | {wallet()}")
+                if crossed:
+                    if len(crossed) == 1:
+                        body = (f"{crossed[0]:,} USDT VIP 30d volume | "
+                                f"{vol_money(vol)} USDT")
+                    else:
+                        body = (f"{crossed[0]:,} → {crossed[-1]:,} USDT VIP "
+                                f"30d volume | {vol_money(vol)} USDT")
+                    notify("🏆", "MILESTONE", body,
+                           f"{len(crossed)} line{'s' if len(crossed) > 1 else ''} "
+                           f"crossed | {money(vol - crossed[-1])} "
+                           f"over the line | {wallet()}")
             notify("✅", "CYCLE DONE",
                    f"{sym} | sold {num(sold)} @ "
                    f"{num(sell_px) if sell_px else '?'} | fee {money(fees)} USDT",
