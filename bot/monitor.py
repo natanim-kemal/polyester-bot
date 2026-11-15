@@ -408,16 +408,26 @@ async def chase_buy(c, pos, m, now):
             return
         except Exception as e:
             print("amend fell back to cancel:", repr(e), flush=True)
+            st, cum, avg = await order_state(c, sym, pos["buy_cid"], m["scale"])
+            left = floor_step((pos.get("qty_target") or Decimal(0))
+                              - floor_step(cum, m["step"]), m["step"])
+    if left <= 0 or left < m["min_qty"] or left * new_px < m["min_notional"]:
+        print("buy chase: nothing left to re-place", flush=True)
+        return
+    try:
+        usdt_available = next((Decimal(r.get("available") or 0) for r in rest_balances()
+                               if r.get("symbol") == QUOTE), Decimal(0))
+    except Exception as e:
+        print("buy chase: balance unreadable, keeping the resting bid", repr(e), flush=True)
+        return
+    if usdt_available < left * new_px * FEE_BUFFER:
+        print("buy chase: cannot afford the higher bid, keeping the resting one", flush=True)
+        return
     try:
         await c.orders.cancel(key=ClientOrderId(pos["buy_cid"]), symbol=sym)
     except Exception:
         pass
-    st, cum, avg = await order_state(c, sym, pos["buy_cid"], m["scale"])
-    left = floor_step((pos.get("qty_target") or Decimal(0))
-                      - floor_step(cum, m["step"]), m["step"])
-    cid = None
-    if left > 0 and left >= m["min_qty"] and left * new_px >= m["min_notional"]:
-        cid, _ = await place(c, sym, "buy", left, new_px)
+    cid, _ = await place(c, sym, "buy", left, new_px)
     if cid:
         pos["buy_cid"] = cid
         pos["buy_px"] = new_px
