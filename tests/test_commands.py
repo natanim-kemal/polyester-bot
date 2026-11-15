@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+from collections import deque
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -98,6 +99,21 @@ check("the vip tier is shown", "tier 4" in lines[2], lines[2])
 commands.VOLUME.clear()
 check("an unread volume says so",
       "no volume reading yet" in commands.reply("volume"))
+
+monitor.CHURN.clear()
+check("an empty index says so", "no book data yet" in commands.reply("vol"))
+now = time.time()
+monitor.CHURN["CHOP-USDT"] = {"bid": Decimal("1"), "ask": Decimal("2"),
+                              "events": deque(now - i for i in range(1, 7))}
+monitor.CHURN["CALM-USDT"] = {"bid": Decimal("1"), "ask": Decimal("2"),
+                              "events": deque([now - 30])}
+text = commands.reply("vol")
+lines = text.splitlines()
+check("vol lists the calmest first", lines[1].startswith("CALM-USDT"), lines[1])
+check("vol puts the choppy pair after", lines[2].startswith("CHOP-USDT"), lines[2])
+check("vol marks the shortlist", "| shortlist" in lines[1], lines[1])
+check("vol names the window", "last 10m" in lines[-1], lines[-1])
+monitor.CHURN.clear()
 
 monitor.CHASE_SCORES.clear()
 monitor.CHASE_SCORES["ARB-USDT"] = (2.0, time.time())
@@ -213,14 +229,14 @@ commands.VOLUME.clear()
 text = commands.reply("help")
 check("help lists every command",
       all(f"/{name}" in text for name in
-          ("volume", "chase", "status", "balance", "fees", "help")), text)
+          ("volume", "vol", "chase", "status", "balance", "fees", "help")), text)
 check("help replies in header plus one line per command",
-      len(text.splitlines()) == 7, str(len(text.splitlines())))
+      len(text.splitlines()) == 8, str(len(text.splitlines())))
 
 menu = commands.command_menu()
 check("the command menu lists every command",
       [c["command"] for c in menu] ==
-      ["balance", "chase", "fees", "help", "status", "volume"],
+      ["balance", "chase", "fees", "help", "status", "vol", "volume"],
       "%d commands" % len(menu))
 check("menu names are valid telegram commands",
       all(c["command"].replace("_", "").isalnum() and c["command"].islower()
