@@ -747,8 +747,9 @@ async def place_sell(c, pos, meta):
     spread = ((best_ask - best_bid) / ((best_ask + best_bid) / 2) * 100
               if best_bid else Decimal(0))
     basis = pos.get("buy_px") or Decimal(0)
-    if pos.get("bail"):
-        target = best_ask - tick
+    taker = bool(pos.get("bail"))
+    if taker:
+        target = best_bid if best_bid > 0 else best_ask - tick
     elif pos.get("join_ask"):
         target = max(best_ask, basis) if basis > 0 else best_ask
     elif basis > 0:
@@ -785,7 +786,7 @@ async def place_sell(c, pos, meta):
             notify("⚠️", "SELL SKIPPED",
                    f"{sym} | below pair minimums | qty {num(q)}")
         return False
-    po = not pos.get("no_postonly")
+    po = not pos.get("no_postonly") and not taker
     for price, post in ((target, po), (best_ask, False)):
         if price <= 0:
             continue
