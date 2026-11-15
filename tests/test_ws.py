@@ -139,6 +139,8 @@ async def open_state(c, sym, cid, scale):
 
 monitor.order_state = open_state
 monitor.place = lambda *a, **k: asyncio.sleep(0, result=("cid-x", None))
+monitor.rest_balances = lambda: [
+    {"symbol": "USDT", "trading": "10000", "available": "10000"}]
 monitor.WS_BOOKS["ARB-USDT"] = (fake_book("0.1671", "0.1690"), time.monotonic())
 pos = {"symbol": "ARB-USDT", "buy_cid": "cid-1", "buy_px": Decimal("0.1670"),
        "buy_at": 0.0, "qty": None, "qty_target": Decimal("100"),
