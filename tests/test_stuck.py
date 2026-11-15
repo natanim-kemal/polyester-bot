@@ -77,10 +77,6 @@ async def fake_place_tp_trigger(c, pos, m):
     tp_placed.append(pos["symbol"])
 
 
-async def fake_pick_best_liquid(c, fb, top=4):
-    return fb[0]
-
-
 async def fake_cycle_done(sym, px):
     cycle_done_calls.append(sym)
 
@@ -132,7 +128,6 @@ def build_ns():
         "state": "buying", "now": 100.0,
         "sat": {"n": 0},
         "place_tp_trigger": fake_place_tp_trigger,
-        "pick_best_liquid": fake_pick_best_liquid,
         "meta": META,
         "QUOTE": "USDT", "GAP_MIN_PCT": Decimal("0.21"),
         "DEPTH_MIN_USD": Decimal("50"), "SCAN_SECONDS": 10.0,
