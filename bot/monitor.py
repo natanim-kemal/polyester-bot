@@ -17,6 +17,7 @@ import hashlib
 import json
 import math
 import os
+from collections import deque
 import sys
 import time
 import urllib.parse
@@ -81,6 +82,9 @@ CHASE_HALF_LIFE = 3600
 CHASE_ASK_WEIGHT = 1.0
 CHASE_BAIL_WEIGHT = 2.0
 CHASE_PARK_SCORE = 0.75
+CHURN_WINDOW = float(os.environ.get("CHURN_WINDOW_SECONDS", "600"))
+CHURN_SHORTLIST = int(os.environ.get("CHURN_SHORTLIST", "3"))
+CHASE_MIN_CYCLE_SECONDS = float(os.environ.get("CHASE_MIN_CYCLE_SECONDS", "180"))
 FALLBACK_COOLDOWN = float(os.environ.get("FALLBACK_COOLDOWN", "60"))
 FALLBACK_PENNY = os.environ.get("FALLBACK_PENNY", "0") == "1"
 SAT_PENNY_AFTER = int(os.environ.get("SAT_PENNY_AFTER", "2"))
@@ -561,6 +565,45 @@ def chase_cooldown(sym, now):
     return math.log2(score / CHASE_PARK_SCORE) * CHASE_HALF_LIFE
 
 
+CHURN = {}
+
+
+def churn_note(sym, bid, ask, now=None):
+    """Record a top-of-book change for sym; keep CHURN_WINDOW seconds of them."""
+    now = now if now is not None else time.time()
+    rec = CHURN.get(sym)
+    if rec is None:
+        CHURN[sym] = {"bid": bid, "ask": ask, "events": deque()}
+        return
+    if rec["bid"] != bid or rec["ask"] != ask:
+        rec["events"].append(now)
+        rec["bid"], rec["ask"] = bid, ask
+    while rec["events"] and now - rec["events"][0] > CHURN_WINDOW:
+        rec["events"].popleft()
+
+
+def churn(sym, now=None):
+    """Top-of-book changes per minute over the window; high = choppy."""
+    now = now if now is not None else time.time()
+    rec = CHURN.get(sym)
+    if not rec:
+        return 0.0
+    while rec["events"] and now - rec["events"][0] > CHURN_WINDOW:
+        rec["events"].popleft()
+    return len(rec["events"]) / (CHURN_WINDOW / 60.0)
+
+
+def calmest(rows, now, limit=CHURN_SHORTLIST):
+    """Calmest first; ties broken by gap, preserving the gap sort."""
+    return sorted(rows, key=lambda r: (churn(r[1], now), -r[0]))[:limit]
+
+
+def chase_allowed(pos, now):
+    """A chase or bail-out only scores onto a cycle that already lived 3 minutes."""
+    start = pos.get("buy_at") or pos.get("since") or 0.0
+    return now - start >= CHASE_MIN_CYCLE_SECONDS
+
+
 async def preflight_buy(c, sym, side, qty, price):
     """Ask the exchange whether the buy would be admissible. Fail-open: only
     a clear rejection blocks; an outage proceeds."""
@@ -654,6 +697,12 @@ async def run_books_ws(c, ids, stop):
                 async for data in sub:
                     if getattr(data, "available", True):
                         WS_BOOKS[sym] = (data, time.monotonic())
+                        try:
+                            if data.bids and data.asks:
+                                churn_note(sym, pdec(data.bids[0].price),
+                                           pdec(data.asks[0].price), time.time())
+                        except Exception:
+                            pass
                     if stop.is_set():
                         break
             except Exception as e:
@@ -1047,17 +1096,17 @@ async def main():
                                                for r in held),
                                    wallet())
                         picked, tag = None, ""
-                        gaps = [r for r in rows
-                                if r[0] >= GAP_MIN_PCT
-                                and min(r[4], r[5]) >= DEPTH_MIN_USD
-                                and not chase_parked(r[1], now)]
+                        gaps = calmest([r for r in rows
+                                        if r[0] >= GAP_MIN_PCT
+                                        and min(r[4], r[5]) >= DEPTH_MIN_USD
+                                        and not chase_parked(r[1], now)], now)
                         if gaps:
                             picked, tag = gaps[0], "GAP"
                         elif now >= next_fallback:
-                            fb = [r for r in rows
-                                  if r[0] >= FALLBACK_MIN_GAP_PCT
-                                  and min(r[4], r[5]) >= FALLBACK_DEPTH_MIN_USD
-                                  and not chase_parked(r[1], now)]
+                            fb = calmest([r for r in rows
+                                          if r[0] >= FALLBACK_MIN_GAP_PCT
+                                          and min(r[4], r[5]) >= FALLBACK_DEPTH_MIN_USD
+                                          and not chase_parked(r[1], now)], now)
                             if FALLBACK_SYMBOL:
                                 fb = [r for r in fb if r[1] == FALLBACK_SYMBOL]
                             if fb:
@@ -1301,7 +1350,8 @@ async def main():
                                                f"{PERSIST_SECONDS:.0f}s | "
                                                f"amending to {num(new_px)}",
                                                wallet(sym.split("-")[0]))
-                                        chase_note(sym, CHASE_ASK_WEIGHT, now)
+                                        if chase_allowed(pos, now):
+                                            chase_note(sym, CHASE_ASK_WEIGHT, now)
                                         amended = True
                                     except Exception as e:
                                         print("amend fell back to cancel:", repr(e),
@@ -1316,7 +1366,8 @@ async def main():
                                            f"{sym} | {aged} better asks held "
                                            f"{PERSIST_SECONDS:.0f}s | re-asking under them",
                                            wallet(sym.split("-")[0]))
-                                    chase_note(sym, CHASE_BAIL_WEIGHT, now)
+                                    if chase_allowed(pos, now):
+                                        chase_note(sym, CHASE_BAIL_WEIGHT, now)
                                     pos["canceling"] = True
                                     pos["bail"] = True
                 if now >= next_fees:

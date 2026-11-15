@@ -56,6 +56,7 @@ jobs:
           python3 tests/test_chase_score.py
           python3 tests/test_volume_alert.py
           python3 tests/test_commands.py
+          python3 tests/test_vol_index.py
 
       - name: Configure SSH
         env:
