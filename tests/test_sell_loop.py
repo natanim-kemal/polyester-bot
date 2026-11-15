@@ -5,11 +5,12 @@ branch out of monitor.py against a fake exchange, so the signal is tight and
 repeatable (no network, no exchange, no timing luck).
 
 Scenario: one ask rests, 3 better asks appear and persist >PERSIST_SECONDS,
-so the bail-out rule fires once.  Expected behaviour: ONE cancel, ONE re-ask,
-then the ask rests.  Buggy behaviour: the re-ask is canceled too, forever.
+so the bail-out rule fires once.  Expected behaviour: ONE cancel, ONE re-ask
+at the best bid (guaranteed fill), then the ask rests.  Buggy behaviour: the
+re-ask is canceled too, forever.
 
 Usage:  python tests/test_sell_loop.py [path-to-monitor.py]
-Exit 0 = pass (ask rests after a single bail-out)
+Exit 0 = pass (ask rests after a single bail-out, re-asked at the bid)
 Exit 1 = fail (cancel storm)
 """
 
@@ -66,6 +67,7 @@ class Exchange:
     def __init__(self):
         self.orders = {}
         self.events = []
+        self.places = []
         self.now = 0.0
         self.n = 0
 
@@ -106,6 +108,7 @@ alerts = []
 
 
 async def fake_place(c, sym, side, qty, price, post_only=False):
+    ex.places.append((price, post_only))
     return ex.place(sym, side, qty, price), None
 
 
@@ -224,9 +227,10 @@ print("asks=%d cancels=%d bail-outs=%d" % (len(asks), len(cancels), len(bails)))
 print("bail-out alerts:", len(bails))
 print("position flags:", {k: pos.get(k) for k in ("sell_cid", "canceling", "bail", "ask_px")})
 
-ok = len(bails) == 1 and len(cancels) == 1 and len(asks) == 2
+ok = (len(bails) == 1 and len(cancels) == 1 and len(asks) == 2
+      and asks[1][3] == "9.5" and ex.places[-1] == (Decimal("9.5"), False))
 if ok:
-    print("\nPASS: one bail-out -> one cancel -> one re-ask -> ask rests")
+    print("\nPASS: one bail-out -> cancel -> re-ask at the bid -> ask rests")
     sys.exit(0)
 print("\nFAIL: cancel storm - the bot keeps canceling the ask it just placed"
       if len(cancels) > 1 else "\nFAIL: unexpected behaviour")
