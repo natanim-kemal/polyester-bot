@@ -126,6 +126,8 @@ def build_ns():
         "scan_books": fake_scan_books,
         "pairs": META,
         "carry": {}, "dust": {}, "adopt_q": [],
+        "calmest": lambda rows, now, limit=3: sorted(rows, key=lambda r: r[0], reverse=True)[:limit],
+        "chase_allowed": lambda pos, now: True,
         "state": "buying", "now": 100.0,
         "sat": {"n": 0},
         "place_tp_trigger": fake_place_tp_trigger,
