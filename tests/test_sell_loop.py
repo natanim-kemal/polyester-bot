@@ -185,6 +185,7 @@ ns = {
     "chase_note": lambda sym, weight, now: None,
     "CHASE_ASK_WEIGHT": 1.0,
     "CHASE_BAIL_WEIGHT": 2.0,
+    "chase_allowed": lambda pos, now: True,
 }
 
 for fn in ("pdec", "floor_step", "money", "num", "notify"):
