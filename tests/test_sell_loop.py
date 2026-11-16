@@ -218,22 +218,45 @@ async def run():
 
 asyncio.run(run())
 
-asks = [e for e in ex.events if e[0] == "ASK"]
-cancels = [e for e in ex.events if e[0] == "CANCEL"]
-bails = [a for a in alerts if "bail-out" in a.lower()]
+# Volume-tagged positions exit at the bid for a guaranteed fill, never resting
+# post-only in the ask queue.
+n_places = len(ex.places)
+pos_vol = {"symbol": "TEST-USDT", "qty": Decimal("10"), "qty0": Decimal("10"),
+           "buy_px": BASIS, "sell_cid": None, "better": {}, "tag": "VOLUME",
+           "join_ask": True, "since": 0.0}
+client2 = FakeClient()
 
+
+async def run2():
+    ex.orders.clear()
+    ex.events.clear()
+    await ns["place_sell"](client2, pos_vol, meta)
+
+
+gap_asks = [e for e in ex.events if e[0] == "ASK"]
+gap_cancels = [e for e in ex.events if e[0] == "CANCEL"]
+gap_bails = [a for a in alerts if "bail-out" in a.lower()]
+gap_ok = (len(gap_bails) == 1 and len(gap_cancels) == 1 and len(gap_asks) == 2
+          and gap_asks[1][3] == "9.6"
+          and ex.places[-1] == (Decimal("9.6"), True))
 print("timeline:")
+
+asyncio.run(run2())
+vol_ok = (len(ex.places) > n_places
+          and ex.places[-1] == (Decimal("9.5"), False))
+
 for e in ex.events:
     print("   ", e)
 print()
-print("asks=%d cancels=%d bail-outs=%d" % (len(asks), len(cancels), len(bails)))
-print("bail-out alerts:", len(bails))
+print("asks=%d cancels=%d bail-outs=%d" % (len(gap_asks), len(gap_cancels), len(gap_bails)))
+print("bail-out alerts:", len(gap_bails))
 print("position flags:", {k: pos.get(k) for k in ("sell_cid", "canceling", "bail", "ask_px")})
+print("vol_ok:", vol_ok)
 
-ok = (len(bails) == 1 and len(cancels) == 1 and len(asks) == 2
-      and asks[1][3] == "9.6" and ex.places[-1] == (Decimal("9.6"), True))
+ok = gap_ok and vol_ok
 if ok:
-    print("\nPASS: one bail-out -> cancel -> re-ask under the ask -> ask rests")
+    print("\nPASS: one bail-out -> cancel -> re-ask under the ask -> ask rests\n"
+          "      and a volume-originated position exits at the bid")
     sys.exit(0)
 print("\nFAIL: cancel storm - the bot keeps canceling the ask it just placed"
       if len(cancels) > 1 else "\nFAIL: unexpected behaviour")
