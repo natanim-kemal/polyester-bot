@@ -100,6 +100,33 @@ commands.VOLUME.clear()
 check("an unread volume says so",
       "no volume reading yet" in commands.reply("volume"))
 
+class Quality:
+    def __init__(self, status, hours):
+        self.status = status
+        self.incomplete_hours = hours
+
+
+commands.VOLUME.update(
+    vol=Decimal("8308872.438155897150394647"),
+    next=None, tier=4,
+    as_of=None,
+    checked_at=time.time() - 60,
+    quality=Quality("incomplete_history", 1))
+text = commands.reply("volume")
+check("a suppressed volume reading shows its stale quality",
+      "quality: incomplete_history (1h missing)" in text, text)
+commands.VOLUME.clear()
+commands.VOLUME.update(
+    vol=Decimal("8308872.438155897150394647"),
+    next=None, tier=4,
+    as_of=None,
+    checked_at=time.time() - 60,
+    quality=Quality("complete", 0))
+complete = commands.reply("volume")
+check("a complete reading does not nag",
+      "quality:" not in complete, complete)
+commands.VOLUME.clear()
+
 monitor.CHURN.clear()
 check("an empty index says so", "no book data yet" in commands.reply("vol"))
 now = time.time()
