@@ -590,6 +590,11 @@ def calmest(rows, now, limit=CHURN_SHORTLIST):
     return sorted(rows, key=lambda r: (churn(r[1], now), -r[0]))[:limit]
 
 
+def least_lossy(rows, now, limit=CHURN_SHORTLIST):
+    """For taker volume trades: lowest spread first, then calmest book."""
+    return sorted(rows, key=lambda r: (r[0], churn(r[1], now)))[:limit]
+
+
 def chase_allowed(pos, now):
     """A chase or bail-out only scores onto a cycle that already lived 3 minutes."""
     start = pos.get("buy_at") or pos.get("since") or 0.0
@@ -1125,10 +1130,10 @@ async def main():
                         if gaps:
                             picked, tag = gaps[0], "GAP"
                         elif now >= next_fallback:
-                            fb = calmest([r for r in rows
-                                          if r[0] >= FALLBACK_MIN_GAP_PCT
-                                          and min(r[4], r[5]) >= FALLBACK_DEPTH_MIN_USD
-                                          and not chase_parked(r[1], now)], now)
+                            fb = least_lossy([r for r in rows
+                                             if r[0] >= FALLBACK_MIN_GAP_PCT
+                                             and min(r[4], r[5]) >= FALLBACK_DEPTH_MIN_USD
+                                             and not chase_parked(r[1], now)], now)
                             if FALLBACK_SYMBOL:
                                 fb = [r for r in fb if r[1] == FALLBACK_SYMBOL]
                             if fb:
