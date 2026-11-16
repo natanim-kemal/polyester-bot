@@ -53,8 +53,7 @@ verifies the exchange and Telegram before writing anything.
   that sits in the calm top-3 for five straight minutes is released and its score resets.
 - **Volatility index** — per-asset top-of-book churn from the WS feed (changes/min
   over a 10-minute window); candidates rank calmest-first, ties by gap, shortlist of 3.
-- **Volume fallback** — deepest market-maker churn if no profitable gap; escalation
-  ladder pennies the bid then crosses the spread as timeouts repeat.
+- **Volume fallback** — if no gap beats the fee bar, a volume cycle at the fee bar (expected to lose a few basis points per round-trip); always taker on both sides, so it fills and counts toward VIP with no resting orders.
 - **Dead-man switch** — `cancel_all_after` re-arms every 60s; if the VM freezes/dies,
   the exchange cancels everything itself.
 - **Freeze-resilient** — sandbox pause stops the guest clock; wall-vs-monotonic skew
