@@ -983,15 +983,19 @@ async def main():
             """Pull the canonical 30d VIP volume the site shows."""
             try:
                 st = await c.vip.get_vip_status()
+                quality = getattr(st, "settled_volume_quality", None)
+                as_of = getattr(st, "metrics_as_of", None)
+                tier = getattr(st, "tier", None)
                 raw = st.settled_volume_30d_usd
-                if raw is None:
-                    return None
-                snap = {"vol": Decimal(str(raw)),
-                        "tier": getattr(st, "tier", None),
-                        "as_of": getattr(st, "metrics_as_of", None),
-                        "checked_at": time.time()}
-                tg.VOLUME.update(snap)
-                return snap
+                if raw is not None:
+                    vol = Decimal(str(raw))
+                    tg.VOLUME.update(
+                        vol=vol, tier=tier, as_of=as_of, checked_at=time.time(),
+                        quality=quality)
+                    return tg.VOLUME
+                tg.VOLUME.update(tier=tier, as_of=as_of, checked_at=time.time(),
+                                 quality=quality)
+                return None
             except Exception as e:
                 print("volume refresh failed:", repr(e), flush=True)
                 return None
