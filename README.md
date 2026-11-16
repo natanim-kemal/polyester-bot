@@ -33,7 +33,7 @@ polyester-bot setup
 or straight from the release tag:
 
 ```bash
-pip install "polyester-bot @ git+https://github.com/natanim-kemal/polyester-bot.git@v1.2.0"
+pip install "polyester-bot @ git+https://github.com/natanim-kemal/polyester-bot.git@v1.3.0"
 ```
 
 The wizard asks for your API key id + Ed25519 seed, derives the account id itself, and
@@ -108,7 +108,11 @@ for t in tests/test_*.py; do python "$t" || exit 1; done
 
 ## Release history
 
-- **v1.2.0** — live VIP fee rates, buy-side chase with atomic amend, websocket orderbook,
+- **v1.3.0** - on-demand Telegram commands (/volume /vol /chase /status /balance /fees /help, slash-menu registered),
+  volume fallback trades taker both sides, least-lossy (narrowest-spread) volume picks, chase park released after
+  five calm minutes with score reset, buy chase backs off a persist window on failure, VIP quality
+  reported on /volume, trailing-zero pairs (SHIB/DOGE/BONK) bail out at the bid for a guaranteed fill.
+- **v1.2.0** - live VIP fee rates, buy-side chase with atomic amend, websocket orderbook,
   liquidity-aware fallback, dead-man switch, daily equity line, opt-in TP triggers,
   orphan/cycle fixes (found on the live book: 500M SHIB stuck).
 - v1.1.0 — guided setup wizard; test suites; scanner + re-sync.
