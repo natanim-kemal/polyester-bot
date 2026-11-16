@@ -73,20 +73,34 @@ def reply(name):
 @command("volume", "/volume - VIP 30d volume, next milestone, reading age")
 def volume():
     v = VOLUME
+    quality = v.get("quality")
+    want_quality = (quality is not None
+                    and getattr(quality, "status", "") != "complete")
     if not v.get("vol"):
-        return "📊 VIP VOLUME\nno volume reading yet"
+        age = age_text(time.time() - v["checked_at"]) if v.get("checked_at") else "?"
+        return "📊 VIP VOLUME\n" + (
+            f"quality {quality.status} ({getattr(quality, 'incomplete_hours', '?')}h "
+            f"missing) | checked {age} ago"
+            if want_quality else "no volume reading yet")
     age = age_text(time.time() - v["checked_at"]) if v.get("checked_at") else "?"
     as_of = v.get("as_of")
     stamp = as_of.strftime("%H:%M UTC") if hasattr(as_of, "strftime") else "?"
     tail = f"API {stamp} | checked {age} ago"
     if v.get("tier") is not None:
         tail += f" | tier {v['tier']}"
-    return "\n".join([
+    lines = [
         "📊 VIP VOLUME",
         f"30d settled {SRC.vol_money(v['vol'])} USDT | "
         f"next {SRC.vol_next(v['vol'], v.get('next')):,}",
         tail,
-    ])
+    ]
+    if want_quality:
+        hours = getattr(quality, "incomplete_hours", None)
+        tail2 = f"quality: {quality.status}"
+        if hours:
+            tail2 += f" ({hours}h missing)"
+        lines.append(tail2)
+    return "\n".join(lines)
 
 
 @command("vol", "/vol - volatility index per pair, calmest first")
