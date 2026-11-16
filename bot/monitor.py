@@ -382,6 +382,8 @@ async def chase_buy(c, pos, m, now):
     aged = sum(1 for p, t0 in track.items() if now - t0 >= PERSIST_SECONDS)
     if aged < BETTER_BIDS_LIMIT:
         return
+    if now - pos.get("chase_retry_after", 0.0) < PERSIST_SECONDS:
+        return
     best = max(better)
     new_px = best + m["tick"]
     top = min((pdec(a.price) for a in (bk.asks or []) if pdec(a.price) > 0),
@@ -407,20 +409,24 @@ async def chase_buy(c, pos, m, now):
                    wallet(sym.split("-")[0]))
             return
         except Exception as e:
+            pos["chase_retry_after"] = now
             print("amend fell back to cancel:", repr(e), flush=True)
             st, cum, avg = await order_state(c, sym, pos["buy_cid"], m["scale"])
             left = floor_step((pos.get("qty_target") or Decimal(0))
                               - floor_step(cum, m["step"]), m["step"])
     if left <= 0 or left < m["min_qty"] or left * new_px < m["min_notional"]:
+        pos["chase_retry_after"] = now
         print("buy chase: nothing left to re-place", flush=True)
         return
     try:
         usdt_available = next((Decimal(r.get("available") or 0) for r in rest_balances()
                                if r.get("symbol") == QUOTE), Decimal(0))
     except Exception as e:
+        pos["chase_retry_after"] = now
         print("buy chase: balance unreadable, keeping the resting bid", repr(e), flush=True)
         return
     if usdt_available < left * new_px * FEE_BUFFER:
+        pos["chase_retry_after"] = now
         print("buy chase: cannot afford the higher bid, keeping the resting one", flush=True)
         return
     try:
