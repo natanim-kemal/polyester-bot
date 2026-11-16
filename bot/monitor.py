@@ -770,7 +770,8 @@ async def place_sell(c, pos, meta):
     if pos.get("bail"):
         target, taker = bail_target(sym, best_bid, best_ask, tick)
     elif pos.get("join_ask"):
-        target = max(best_ask, basis) if basis > 0 else best_ask
+        target = best_bid if best_bid > 0 else best_ask - tick
+        taker = True
     elif basis > 0:
         target = max(best_ask - tick, basis)
     else:
@@ -1178,8 +1179,9 @@ async def main():
                                 sat["n"] = 0
                                 penny, take = False, False
                             else:
-                                penny = FALLBACK_PENNY or sat["n"] >= SAT_PENNY_AFTER
-                                take = sat["n"] >= SAT_TAKER_AFTER
+                                # volume fallback is taker by design: guaranteed
+                                # fill and guaranteed volume; fees are the cost
+                                penny, take = False, True
                             price = entry_price(tag, bid, ask, m, penny, take)
                             buy_fee = (taker_fee_pct(FEES, sym) if take
                                        else maker_fee_pct(FEES, sym))
