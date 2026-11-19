@@ -88,6 +88,10 @@ BAIL_TAKER = {s.strip().upper() for s in
 CHURN_WINDOW = float(os.environ.get("CHURN_WINDOW_SECONDS", "600"))
 CHURN_SHORTLIST = int(os.environ.get("CHURN_SHORTLIST", "3"))
 CHASE_MIN_CYCLE_SECONDS = float(os.environ.get("CHASE_MIN_CYCLE_SECONDS", "180"))
+MID_EMA = {}
+EMERGENCY = {}
+EMERGENCY_MIN_MOVE_PCT = float(os.environ.get("EMERGENCY_MIN_MOVE_PCT", "20"))
+EMERGENCY_COOLDOWN = float(os.environ.get("EMERGENCY_COOLDOWN_SECONDS", "300"))
 FALLBACK_COOLDOWN = float(os.environ.get("FALLBACK_COOLDOWN", "60"))
 FALLBACK_PENNY = os.environ.get("FALLBACK_PENNY", "0") == "1"
 SAT_PENNY_AFTER = int(os.environ.get("SAT_PENNY_AFTER", "2"))
@@ -591,6 +595,36 @@ def churn(sym, now=None):
     return len(rec["events"]) / (CHURN_WINDOW / 60.0)
 
 
+def emergency_track(sym, bid, ask, now=None):
+    """Update the per-pair EMA; flag the pair when its mid is 20%+ off its EMA."""
+    now = now if now is not None else time.time()
+    if not bid or not ask or bid <= 0 or ask <= 0:
+        return False
+    mid = (bid + ask) / 2
+    prev = MID_EMA.get(sym)
+    if prev is None:
+        MID_EMA[sym] = mid
+        return False
+    ema = mid * Decimal("0.02") + prev * Decimal("0.98")
+    MID_EMA[sym] = ema
+    move = (mid - ema) / ema * 100
+    if abs(move) >= EMERGENCY_MIN_MOVE_PCT:
+        EMERGENCY[sym] = (move, now)
+        return True
+    return False
+
+
+def emergency_biggest(now):
+    """Largest pending flagged symbol; drops entries that aged out."""
+    now = now if now is not None else time.time()
+    for sym, (_, ts) in list(EMERGENCY.items()):
+        if now - ts > EMERGENCY_COOLDOWN:
+            del EMERGENCY[sym]
+    if not EMERGENCY:
+        return None
+    return max(EMERGENCY, key=lambda s: abs(EMERGENCY[s][0]))
+
+
 def calmest(rows, now, limit=CHURN_SHORTLIST):
     """Calmest first; ties broken by gap, preserving the gap sort."""
     return sorted(rows, key=lambda r: (churn(r[1], now), -r[0]))[:limit]
@@ -726,6 +760,12 @@ async def run_books_ws(c, ids, stop):
                 async for data in sub:
                     if getattr(data, "available", True):
                         WS_BOOKS[sym] = (data, time.monotonic())
+                        try:
+                            if data.bids and data.asks:
+                                emergency_track(sym, pdec(data.bids[0].price),
+                                                pdec(data.asks[0].price), time.time())
+                        except Exception:
+                            pass
                     if stop.is_set():
                         break
             except Exception as e:
@@ -1109,7 +1149,64 @@ async def main():
                            wallet(sym.split("-")[0]))
 
                 elif state == "idle":
-                    if now >= next_scan:
+                    hot = emergency_biggest(now)
+                    if hot is not None:
+                        try:
+                            for r in rest_balances():
+                                base = r.get("symbol")
+                                qty = Decimal(r.get("trading") or 0)
+                                if base == QUOTE or qty <= 0:
+                                    continue
+                                H = base + "-" + QUOTE
+                                if H not in meta:
+                                    continue
+                                mH = meta[H]
+                                qtyH = floor_step(qty, mH["step"])
+                                bkH = await book(c, H, depth=1)
+                                if not bkH.bids:
+                                    continue
+                                bidH = pdec(bkH.bids[0].price)
+                                if qtyH > 0 and qtyH * bidH >= mH["min_notional"]:
+                                    cid, err = await place(c, H, "sell", qtyH,
+                                                            bidH, post_only=False)
+                                    if cid:
+                                        pos = {"symbol": H, "qty": qtyH, "qty0": qtyH,
+                                               "buy_px": COST_BASIS.get(H, Decimal(0)),
+                                               "sell_cid": cid, "better": {},
+                                               "since": now, "tag": "VOLUME"}
+                                        state = "selling"
+                                        carry[H] = (pos["buy_px"], qtyH)
+                                        notify("🆘", "EMERGENCY SELL",
+                                               f"{H} {num(qtyH)} at best bid")
+                                        break
+                            else:
+                                m = meta[hot]
+                                bk_hot = await book(c, hot, depth=1)
+                                if bk_hot.asks and bk_hot.bids:
+                                    ask_hot = pdec(bk_hot.asks[0].price)
+                                    usdt_q = next((Decimal(r.get("available") or 0)
+                                                   for r in rest_balances()
+                                                   if r.get("symbol") == QUOTE),
+                                                  Decimal(0))
+                                    q = floor_step(usdt_q / ask_hot, m["step"])
+                                    if q > 0 and q >= m["min_qty"] and q * ask_hot >= m["min_notional"]:
+                                        cid, err = await place(c, hot, "buy", q,
+                                                                ask_hot, post_only=False)
+                                        if cid:
+                                            pos = {"symbol": hot, "buy_cid": cid,
+                                                   "buy_px": ask_hot, "buy_at": now,
+                                                   "qty": None, "qty_target": q,
+                                                   "tag": "VOLUME",
+                                                   "buy_fee_pct": taker_fee_pct(FEES, hot),
+                                                   "join_ask": True}
+                                            state = "buying"
+                                            notify("🆘", "EMERGENCY BUY",
+                                                   f"{hot} {num(q)} at best ask")
+                            del EMERGENCY[hot]
+                        except Exception as e:
+                            print("emergency failed:", repr(e), flush=True)
+                        next_scan = now
+                    elif now >= next_scan:
                         next_scan = now + SCAN_SECONDS
                         rows = await scan_books(c, pairs)
                         calm_streak_update(rows, now)
