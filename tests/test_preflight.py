@@ -163,6 +163,8 @@ ns = {
     "least_lossy": lambda rows, now, limit=3: sorted(rows, key=lambda r: r[0])[:limit],
     "calm_streak_update": lambda rows, now, limit=3: None,
     "chase_allowed": lambda pos, now: True,
+    "EMERGENCY": {}, "EMERGENCY_MIN_MOVE_PCT": 0.0,
+    "emergency_biggest": lambda now: None,
 }
 exec(compile("async def idle_step(c, pairs):\n"
              "    global now, next_scan, next_fallback, next_block_alert\n"

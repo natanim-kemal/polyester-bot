@@ -46,6 +46,7 @@ jobs:
           python3 tests/test_fees.py
           python3 tests/test_chase.py
           python3 tests/test_deadman.py
+          python3 tests/test_emergency.py
           python3 tests/test_amend.py
           python3 tests/test_tp_trigger.py
           python3 tests/test_ws.py
