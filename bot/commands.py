@@ -17,6 +17,26 @@ VOLUME = {}
 RUNTIME = {}
 SRC = None
 COMMANDS = {}
+STOP_REQUESTED = False
+STOP_EXPIRE_HOURS = float(os.environ.get("STOP_EXPIRE_HOURS", "24"))
+
+
+def clear_stop():
+    global STOP_REQUESTED
+    STOP_REQUESTED = False
+    try:
+        os.remove(SRC.state_file("STOP"))
+    except (OSError, AttributeError):
+        pass
+
+
+def stop_expired():
+    try:
+        with open(SRC.state_file("STOP"), encoding="utf-8") as f:
+            stamp = float(f.read().strip())
+        return time.time() - stamp > STOP_EXPIRE_HOURS * 3600
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
 
 _started = False
 _offset = None
@@ -233,6 +253,24 @@ def fees():
     ])
 
 
+@command("stop", "/stop - halt trading, cancel orders, trade manually")
+def stop():
+    global STOP_REQUESTED
+    STOP_REQUESTED = True
+    try:
+        with open(SRC.state_file("STOP"), "w", encoding="utf-8") as f:
+            f.write(str(int(time.time())))
+    except (OSError, AttributeError) as e:
+        print("stop state write failed:", repr(e), flush=True)
+    return "🛑 STOP REQUESTED | trading halts within 2s, orders cancelled"
+
+
+@command("start", "/start - resume trading after /stop")
+def start():
+    clear_stop()
+    return "▶️ RESUME REQUESTED | trading resumes within 2s"
+
+
 @command("help", "/help - this list")
 def help_():
     rows = ["🧭 COMMANDS"]
@@ -328,7 +366,7 @@ def _poll():
 
 def start(src):
     """Start the listener thread once; no-op without token and chat id."""
-    global SRC, _started
+    global SRC, _started, STOP_REQUESTED
     if _started:
         return
     tok, chat = _token_chat()
@@ -337,6 +375,14 @@ def start(src):
               flush=True)
         return
     SRC = src
+    try:
+        if os.path.isfile(src.state_file("STOP")) and stop_expired():
+            clear_stop()
+        STOP_REQUESTED = os.path.isfile(src.state_file("STOP"))
+        if STOP_REQUESTED:
+            print("persisted /stop: staying halted", flush=True)
+    except Exception as e:
+        print("stop state read failed:", repr(e), flush=True)
     _started = True
     threading.Thread(target=_poll, name="telegram-commands", daemon=True).start()
     print("telegram commands on", flush=True)

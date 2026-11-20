@@ -1107,8 +1107,34 @@ async def main():
             tg.RUNTIME.update(last_cycle=time.time(), last_cycle_sym=sym)
             pos, state = {}, "idle"
 
+        halted = False
         while True:
             now = time.time()
+            if getattr(tg, "STOP_REQUESTED", False):
+                if tg.stop_expired():
+                    tg.clear_stop()
+                    halted = False
+                    continue
+                if not halted:
+                    halted = True
+                    try:
+                        await c.orders.cancel_all(
+                            request_id="gap1-stop-" + uuid.uuid4().hex[:10])
+                        await c.orders.cancel_all_after(
+                            timeout_sec=0,
+                            request_id="gap1-dms-" + uuid.uuid4().hex[:10])
+                    except Exception as e:
+                        print("stop cleanup failed:", repr(e), flush=True)
+                    notify("🛑", "STOPPED",
+                           "orders cancelled | dead-man disarmed | trade manually now",
+                           wallet())
+                tg.RUNTIME.update(tick=now, state="stopped")
+                beat(now)
+                await asyncio.sleep(2)
+                continue
+            if halted:
+                halted = False
+                notify("▶️", "RESUMED", "trading again")
             tg.RUNTIME.update(tick=now, state=state,
                               symbol=pos.get("symbol"),
                               qty=pos.get("qty") or pos.get("qty_target"))
