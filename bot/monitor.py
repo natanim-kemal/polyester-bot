@@ -73,6 +73,7 @@ GAP_MARGIN_PCT = Decimal(os.environ.get("GAP_MARGIN_PCT", "0.01"))
 GAP_MIN_FIXED = (Decimal(os.environ["GAP_MIN_PCT"])
                  if os.environ.get("GAP_MIN_PCT") else None)
 FEES = {}
+USDC_MODE = False
 FEES_REFRESH_SECONDS = float(os.environ.get("FEES_REFRESH_SECONDS", "1800"))
 DEPTH_MIN_USD = Decimal(os.environ.get("DEPTH_MIN_USD", "50"))
 FALLBACK_SYMBOL = os.environ.get("FALLBACK_SYMBOL", "").strip()
@@ -855,7 +856,9 @@ async def place_sell(c, pos, meta):
               if best_bid else Decimal(0))
     basis = pos.get("buy_px") or Decimal(0)
     taker = False
-    if pos.get("bail"):
+    if pos.get("usdc_mode"):
+        target = best_ask
+    elif pos.get("bail"):
         target, taker = bail_target(sym, best_bid, best_ask, tick)
     elif pos.get("join_ask"):
         target = best_bid if best_bid > 0 else best_ask - tick
@@ -1174,6 +1177,7 @@ async def main():
             if halted:
                 halted = False
                 notify("▶️", "RESUMED", "trading again")
+            USDC_MODE = getattr(tg, "USDC_MODE", False)
             tg.RUNTIME.update(tick=now, state=state,
                               symbol=pos.get("symbol"),
                               qty=pos.get("qty") or pos.get("qty_target"))
@@ -1214,7 +1218,35 @@ async def main():
                            wallet(sym.split("-")[0]))
 
                 elif state == "idle":
-                    hot = emergency_biggest(now)
+                    if USDC_MODE and "USDC-USDT" in meta:
+                        usym, um = "USDC-USDT", meta["USDC-USDT"]
+                        ubk = await book(c, usym, depth=1)
+                        if ubk.bids and ubk.asks:
+                            ubid = pdec(ubk.bids[0].price)
+                            uusdt = next((Decimal(r["available"])
+                                          for r in rest_balances()
+                                          if r.get("symbol") == QUOTE), Decimal(0))
+                            uq = floor_step(uusdt / ubid, um["step"])
+                            if uq > 0 and uq >= um["min_qty"] and uq * ubid >= um["min_notional"]:
+                                cid, err = await place(c, usym, "buy", uq, ubid,
+                                                        post_only=True)
+                                if cid:
+                                    pos = {"symbol": usym, "buy_cid": cid,
+                                           "buy_px": ubid, "buy_at": now,
+                                           "qty": None, "qty_target": uq,
+                                           "tag": "USDC",
+                                           "buy_fee_pct": maker_fee_pct(FEES, usym),
+                                           "sell_cid": None, "better": {},
+                                           "time_mult": 3.0, "usdc_mode": True}
+                                    state = "buying"
+                                    notify("🟢", "USDC BUY",
+                                           f"{num(uq)} @ {num(ubid)} (best bid) | "
+                                           f"full balance {money(uusdt)} USDT")
+                                else:
+                                    notify("⚠️", "USDC BUY REJECTED",
+                                           f"{usym} | {err}")
+                        next_scan = now + SCAN_SECONDS
+                    hot = None if USDC_MODE else emergency_biggest(now)
                     if hot is not None:
                         try:
                             for r in rest_balances():
@@ -1553,7 +1585,7 @@ async def main():
                             if aged >= BETTER_ASKS_LIMIT:
                                 asks2 = [pdec(a.price) for a in (bk.asks or [])
                                          if pdec(a.price) > 0]
-                                new_px = min(asks2) - m["tick"] if asks2 else None
+                                new_px = (min(asks2) if pos.get("usdc_mode") else min(asks2) - m["tick"]) if asks2 else None
                                 amended = False
                                 if new_px is not None and new_px != pos["ask_px"]:
                                     try:

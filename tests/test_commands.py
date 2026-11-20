@@ -47,6 +47,10 @@ commands.SRC = monitor
 
 check("plain text is ignored", commands.parse("hello") == (None, ""))
 check("a slash command parses", commands.parse("/volume") == ("volume", ""))
+check("usdc-mode parses to the menu name",
+      commands.parse("/usdc-mode") == ("usdcmode", ""))
+check("usdc-mode is in the command menu",
+      any(c["command"] == "usdcmode" for c in commands.command_menu()))
 check("a bot suffix parses", commands.parse("/volume@PolyBot") == ("volume", ""))
 check("arguments are kept", commands.parse("/chase ARB") == ("chase", "ARB"))
 check("a bare slash is ignored", commands.parse("/") == (None, ""))
@@ -107,6 +111,17 @@ with TemporaryDirectory() as td:
     check("a stop from two days ago expires", commands.stop_expired())
     commands.reply("stop")
     check("a fresh stop still holds", not commands.stop_expired())
+    commands.reply("usdcmode")
+    check("usdc mode turns on and persists",
+          commands.USDC_MODE and os.path.isfile(os.path.join(td, "USDC_MODE")))
+    commands.reply("usdcmode")
+    check("usdc mode toggles off and clears its file",
+          not commands.USDC_MODE
+          and not os.path.isfile(os.path.join(td, "USDC_MODE")))
+    with open(os.path.join(td, "USDC_MODE"), "w", encoding="utf-8") as f:
+        f.write(str(int(time.time() - 25 * 3600)))
+    check("an old usdc mode expires", commands.usdc_mode_expired())
+    commands.clear_usdc_mode()
 commands.SRC = old_src
 
 check("a fresh loop is ok", commands.health(3) == "ok")
@@ -321,3 +336,4 @@ commands._api = old_api
 print()
 print("PASS: telegram commands answer on demand" if ok else "FAIL")
 sys.exit(0 if ok else 1)
+

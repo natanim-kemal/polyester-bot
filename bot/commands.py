@@ -74,6 +74,8 @@ def parse(text):
         return None, ""
     head, _, rest = text.partition(" ")
     name = head[1:].split("@", 1)[0].lower()
+    if name == "usdc-mode":
+        name = "usdcmode"
     if not name:
         return None, ""
     return name, rest.strip()
@@ -271,12 +273,49 @@ def start():
     return "▶️ RESUME REQUESTED | trading resumes within 2s"
 
 
+@command("usdcmode", "/usdc-mode - toggle USDC-only join bid/ask mode")
+def usdc_mode_cmd():
+    global USDC_MODE
+    if USDC_MODE:
+        clear_usdc_mode()
+        return "🟢 USDC MODE OFF | all pairs available again"
+    USDC_MODE = True
+    try:
+        with open(SRC.state_file("USDC_MODE"), "w", encoding="utf-8") as f:
+            f.write(str(int(time.time())))
+    except (OSError, AttributeError) as e:
+        print("usdc mode state write failed:", repr(e), flush=True)
+    return "🟢 USDC MODE ON | full balance | buy at best bid, sell at best ask | x3 timeout"
+
+
 @command("help", "/help - this list")
 def help_():
     rows = ["🧭 COMMANDS"]
     for _, (usage, _) in sorted(COMMANDS.items()):
         rows.append(usage)
     return "\n".join(rows)
+
+
+USDC_MODE = False
+USDC_MODE_EXPIRE_HOURS = float(os.environ.get("USDC_MODE_EXPIRE_HOURS", "24"))
+
+
+def clear_usdc_mode():
+    global USDC_MODE
+    USDC_MODE = False
+    try:
+        os.remove(SRC.state_file("USDC_MODE"))
+    except (OSError, AttributeError):
+        pass
+
+
+def usdc_mode_expired():
+    try:
+        with open(SRC.state_file("USDC_MODE"), encoding="utf-8") as f:
+            stamp = float(f.read().strip())
+        return time.time() - stamp > USDC_MODE_EXPIRE_HOURS * 3600
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
 
 
 def command_menu():
@@ -366,7 +405,7 @@ def _poll():
 
 def start(src):
     """Start the listener thread once; no-op without token and chat id."""
-    global SRC, _started, STOP_REQUESTED
+    global SRC, _started, STOP_REQUESTED, USDC_MODE
     if _started:
         return
     tok, chat = _token_chat()
@@ -383,6 +422,14 @@ def start(src):
             print("persisted /stop: staying halted", flush=True)
     except Exception as e:
         print("stop state read failed:", repr(e), flush=True)
+    try:
+        if os.path.isfile(src.state_file("USDC_MODE")) and usdc_mode_expired():
+            clear_usdc_mode()
+        USDC_MODE = os.path.isfile(src.state_file("USDC_MODE"))
+        if USDC_MODE:
+            print("persisted /usdc-mode: USDC only", flush=True)
+    except Exception as e:
+        print("usdc mode state read failed:", repr(e), flush=True)
     _started = True
     threading.Thread(target=_poll, name="telegram-commands", daemon=True).start()
     print("telegram commands on", flush=True)
