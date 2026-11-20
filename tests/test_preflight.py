@@ -165,6 +165,7 @@ ns = {
     "chase_allowed": lambda pos, now: True,
     "EMERGENCY": {}, "EMERGENCY_MIN_MOVE_PCT": 0.0,
     "emergency_biggest": lambda now: None,
+    "USDC_MODE": False,
     "fair_close": lambda c, s: asyncio.sleep(0, result=Decimal("3620")),
     "gap_guards": lambda b, a, bu, au, f, u: (True, "flat", "", None),
 }
