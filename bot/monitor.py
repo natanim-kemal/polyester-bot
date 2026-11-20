@@ -1111,6 +1111,10 @@ async def main():
         while True:
             now = time.time()
             if getattr(tg, "STOP_REQUESTED", False):
+                if tg.stop_expired():
+                    tg.clear_stop()
+                    halted = False
+                    continue
                 if not halted:
                     halted = True
                     try:
@@ -1124,6 +1128,8 @@ async def main():
                     notify("🛑", "STOPPED",
                            "orders cancelled | dead-man disarmed | trade manually now",
                            wallet())
+                tg.RUNTIME.update(tick=now, state="stopped")
+                beat(now)
                 await asyncio.sleep(2)
                 continue
             if halted:
