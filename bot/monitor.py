@@ -104,6 +104,11 @@ PERSIST_SECONDS = float(os.environ.get("PERSIST_SECONDS", "60"))
 BETTER_ASKS_LIMIT = int(os.environ.get("BETTER_ASKS_LIMIT", "1"))
 BETTER_BIDS_LIMIT = int(os.environ.get("BETTER_BIDS_LIMIT", "1"))
 BUY_TIMEOUT_SECONDS = float(os.environ.get("BUY_TIMEOUT_SECONDS", "180"))
+FAIR_MAX_DRIFT_PCT = Decimal(os.environ.get("FAIR_MAX_DRIFT_PCT", "2"))
+FAIR_DEADBAND_PCT = Decimal(os.environ.get("FAIR_DEADBAND_PCT", "1"))
+DEPTH_MIN_RATIO = Decimal(os.environ.get("DEPTH_MIN_RATIO", "2"))
+DEPTH_MAX_SKEW = Decimal(os.environ.get("DEPTH_MAX_SKEW", "5"))
+GAP_TIMEOUT_MULT = float(os.environ.get("GAP_TIMEOUT_MULT", "3"))
 DEADMAN_TIMEOUT = int(os.environ.get("DEADMAN_TIMEOUT", "120"))
 DEADMAN_REFRESH = 60
 FEE_BUFFER = Decimal("1.0015")
@@ -383,10 +388,10 @@ async def chase_buy(c, pos, m, now):
             del track[p]
     for p in better:
         track.setdefault(p, now)
-    aged = sum(1 for p, t0 in track.items() if now - t0 >= PERSIST_SECONDS)
+    aged = sum(1 for p, t0 in track.items() if now - t0 >= PERSIST_SECONDS * pos.get("time_mult", 1.0))
     if aged < BETTER_BIDS_LIMIT:
         return
-    if now - pos.get("chase_retry_after", 0.0) < PERSIST_SECONDS:
+    if now - pos.get("chase_retry_after", 0.0) < PERSIST_SECONDS * pos.get("time_mult", 1.0):
         return
     best = max(better)
     new_px = best + m["tick"]
@@ -798,6 +803,38 @@ async def scan_books(c, pairs):
     return rows
 
 
+async def fair_close(c, sym):
+    """Last closed 1h candle close; None when unavailable."""
+    try:
+        cr = await c.market_data.get_candles(symbol=sym, timeframe="1h", limit=3)
+        for cd in sorted(list(cr.candles), key=lambda x: x.ts_sec, reverse=True):
+            if getattr(cd, "is_closed", False):
+                px = Decimal(cd.close)
+                return px if px > 0 else None
+    except Exception as e:
+        print("fair price failed:", sym, repr(e), flush=True)
+    return None
+
+
+def gap_guards(bid, ask, bid_usd, ask_usd, fair, usdt):
+    """(ok, kind, why, sell_at_fair) for one gap candidate."""
+    if fair is None or fair <= 0:
+        return False, None, "fair price unavailable", None
+    mid = (bid + ask) / 2
+    dev = (mid - fair) / fair * 100
+    kind = ("pump" if dev > FAIR_DEADBAND_PCT else
+            "dump" if dev < -FAIR_DEADBAND_PCT else "flat")
+    if min(bid_usd, ask_usd) <= 0:
+        return False, kind, "empty book side", None
+    if max(bid_usd, ask_usd) > min(bid_usd, ask_usd) * DEPTH_MAX_SKEW:
+        return False, kind, f"skewed depth {money(bid_usd)}/{money(ask_usd)}", None
+    if usdt > 0 and min(bid_usd, ask_usd) < usdt * DEPTH_MIN_RATIO:
+        return False, kind, f"thin depth {money(bid_usd)}/{money(ask_usd)}", None
+    if kind == "pump" and bid > fair * (1 + FAIR_MAX_DRIFT_PCT / 100):
+        return False, kind, f"inflated bid {num(bid)} vs fair {num(fair)}", None
+    return True, kind, "", fair if kind == "dump" else None
+
+
 def bail_target(sym, best_bid, best_ask, tick):
     """Bail-out re-ask: take the bid on trailing-zero pairs, else one tick under."""
     if sym.split("-")[0] in BAIL_TAKER and best_bid > 0:
@@ -823,6 +860,8 @@ async def place_sell(c, pos, meta):
     elif pos.get("join_ask"):
         target = best_bid if best_bid > 0 else best_ask - tick
         taker = True
+    elif pos.get("sell_at_fair") is not None:
+        target = max(floor_step(pos["sell_at_fair"], tick), best_bid + tick)
     elif basis > 0:
         target = max(best_ask - tick, basis)
     else:
@@ -1234,9 +1273,25 @@ async def main():
                                         if r[0] >= GAP_MIN_PCT
                                         and min(r[4], r[5]) >= DEPTH_MIN_USD
                                         and not chase_parked(r[1], now)], now)
+                        gap_kind, sell_fair = None, None
                         if gaps:
-                            picked, tag = gaps[0], "GAP"
-                        elif now >= next_fallback:
+                            usdt_now = next((Decimal(r["available"])
+                                             for r in rest_balances()
+                                             if r.get("symbol") == QUOTE), Decimal(0))
+                            for cand in gaps[:3]:
+                                cg, cs, cb, ca, cbu, cau = cand
+                                fp = await fair_close(c, cs)
+                                ok, kind, why, sf = gap_guards(cb, ca, cbu, cau,
+                                                                fp, usdt_now)
+                                if ok:
+                                    picked, tag = cand, "GAP"
+                                    gap_kind, sell_fair = kind, sf
+                                    break
+                                if now >= next_block_alert:
+                                    next_block_alert = now + 600
+                                    notify("⚠️", "GAP SKIPPED",
+                                           f"{cs} | gap {cg:.2f}% | {why}", wallet())
+                        if not picked and now >= next_fallback:
                             fb = least_lossy([r for r in rows
                                              if r[0] >= FALLBACK_MIN_GAP_PCT
                                              and min(r[4], r[5]) >= FALLBACK_DEPTH_MIN_USD
@@ -1318,7 +1373,10 @@ async def main():
                                            "qty_target": q, "tag": tag,
                                            "buy_fee_pct": buy_fee,
                                            "sell_cid": None, "better": {},
-                                           "join_ask": tag == "VOLUME"}
+                                           "join_ask": tag == "VOLUME",
+                                            "time_mult": GAP_TIMEOUT_MULT if tag == "GAP" else 1.0,
+                                            "gap_kind": gap_kind,
+                                            "sell_at_fair": sell_fair}
                                     state = "buying"
                                     if tag == "GAP":
                                         notify("🟢", "BUY",
@@ -1373,7 +1431,7 @@ async def main():
                             state = "idle"
                     else:
                         await chase_buy(c, pos, m, now)
-                        tmo = buy_timeout_for(pos.get("tag", "GAP"), sat["n"])
+                        tmo = buy_timeout_for(pos.get("tag", "GAP"), sat["n"]) * pos.get("time_mult", 1.0)
                         if now - pos["buy_at"] > tmo:
                             try:
                                 await c.orders.cancel(key=ClientOrderId(pos["buy_cid"]),
@@ -1465,7 +1523,7 @@ async def main():
                             for p in better:
                                 track.setdefault(p, now)
                             aged = sum(1 for p, t0 in track.items()
-                                       if now - t0 >= PERSIST_SECONDS)
+                                       if now - t0 >= PERSIST_SECONDS * pos.get("time_mult", 1.0))
                             if aged >= BETTER_ASKS_LIMIT:
                                 asks2 = [pdec(a.price) for a in (bk.asks or [])
                                          if pdec(a.price) > 0]
