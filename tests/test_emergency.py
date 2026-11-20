@@ -124,6 +124,7 @@ def build_ns():
         "rest_balances": lambda: BALANCES,
         "EMERGENCY": {"ARB-USDT": (25.0, 100.0)},
         "emergency_biggest": lambda now: "ARB-USDT",
+        "USDC_MODE": False,
         "COST_BASIS": {"ARB-USDT": Decimal("0.1680")},
         "FEES": {}, "DEFAULT_MAKER_PCT": 0.1, "DEFAULT_TAKER_PCT": 0.15,
         "state": "idle", "now": 100.0, "next_scan": 0.0, "next_fallback": 0.0,
