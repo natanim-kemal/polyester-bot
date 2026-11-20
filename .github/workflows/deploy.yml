@@ -48,6 +48,7 @@ jobs:
           python3 tests/test_deadman.py
           python3 tests/test_emergency.py
           python3 tests/test_gap_guards.py
+          python3 tests/test_spike_setup.py
           python3 tests/test_usdc_mode.py
           python3 tests/test_amend.py
           python3 tests/test_tp_trigger.py
