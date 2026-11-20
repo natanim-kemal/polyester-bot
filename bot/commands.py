@@ -17,6 +17,7 @@ VOLUME = {}
 RUNTIME = {}
 SRC = None
 COMMANDS = {}
+STOP_REQUESTED = False
 
 _started = False
 _offset = None
@@ -231,6 +232,20 @@ def fees():
         head,
         f"gap floor {SRC.GAP_MIN_PCT}% | {len(SRC.FEES)} pairs",
     ])
+
+
+@command("stop", "/stop - halt trading, cancel orders, trade manually")
+def stop():
+    global STOP_REQUESTED
+    STOP_REQUESTED = True
+    return "🛑 STOP REQUESTED | trading halts within 2s, orders cancelled"
+
+
+@command("start", "/start - resume trading after /stop")
+def start():
+    global STOP_REQUESTED
+    STOP_REQUESTED = False
+    return "▶️ RESUME REQUESTED | trading resumes within 2s"
 
 
 @command("help", "/help - this list")
