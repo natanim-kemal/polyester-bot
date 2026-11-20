@@ -817,7 +817,45 @@ async def fair_close(c, sym):
     return None
 
 
-def gap_guards(bid, ask, bid_usd, ask_usd, fair, usdt):
+async def spike_setup(c, sym, mid, trade_usdt, tick):
+    """Find a bid wall + hollow asks + enough exit liquidity above: a spike setup."""
+    try:
+        bk = await book(c, sym, depth=50)
+    except Exception as e:
+        print("spike book failed:", sym, repr(e), flush=True)
+        return None
+    bids = [(pdec(l.price), pdec(l.qty)) for l in (bk.bids or [])]
+    asks = [(pdec(l.price), pdec(l.qty)) for l in (bk.asks or [])]
+    if not bids or not asks or mid <= 0 or trade_usdt <= 0:
+        return None
+    wall = max(((px, q, px * q) for px, q in bids
+                if 0 < px <= mid * Decimal("0.9")),
+               key=lambda t: t[2], default=None)
+    if wall is None or wall[2] < trade_usdt * 3:
+        return None
+    cap = mid * Decimal("1.05")
+    near = sum(px * q for px, q in asks if 0 < px <= cap)
+    if near <= 0 or wall[2] < near * 10:
+        return None
+    far = sorted(((px, q, px * q) for px, q in asks if px > cap),
+                 key=lambda t: t[0])
+    group, target = [], None
+    for level in far + [None]:
+        if group and (level is None or level[0] > group[0][0] * Decimal("1.01")):
+            if len(group) >= 2 and sum(g[2] for g in group) >= trade_usdt * Decimal("1.5"):
+                target = group[0][0] - tick
+                break
+            group = []
+        if level is not None:
+            group.append(level)
+    if target is None:
+        return None
+    return {"wall_px": wall[0], "wall_usd": wall[2], "near_usd": near,
+            "target": target,
+            "power": float(min(wall[2] / max(near, Decimal(1)), Decimal(100)))}
+
+
+def gap_guards(bid, ask, bid_usd, ask_usd, fair, usdt, setup=None):
     """(ok, kind, why, sell_at_fair) for one gap candidate."""
     if fair is None or fair <= 0:
         return False, None, "fair price unavailable", None
@@ -827,13 +865,15 @@ def gap_guards(bid, ask, bid_usd, ask_usd, fair, usdt):
             "dump" if dev < -FAIR_DEADBAND_PCT else "flat")
     if min(bid_usd, ask_usd) <= 0:
         return False, kind, "empty book side", None
-    if max(bid_usd, ask_usd) > min(bid_usd, ask_usd) * DEPTH_MAX_SKEW:
-        return False, kind, f"skewed depth {money(bid_usd)}/{money(ask_usd)}", None
-    if usdt > 0 and min(bid_usd, ask_usd) < usdt * DEPTH_MIN_RATIO:
-        return False, kind, f"thin depth {money(bid_usd)}/{money(ask_usd)}", None
+    if setup is None:
+        if max(bid_usd, ask_usd) > min(bid_usd, ask_usd) * DEPTH_MAX_SKEW:
+            return False, kind, f"skewed depth {money(bid_usd)}/{money(ask_usd)}", None
+        if usdt > 0 and min(bid_usd, ask_usd) < usdt * DEPTH_MIN_RATIO:
+            return False, kind, f"thin depth {money(bid_usd)}/{money(ask_usd)}", None
     if kind == "pump" and bid > fair * (1 + FAIR_MAX_DRIFT_PCT / 100):
         return False, kind, f"inflated bid {num(bid)} vs fair {num(fair)}", None
-    return True, kind, "", fair if kind == "dump" else None
+    return True, kind, "", (setup["target"] if setup else
+                            fair if kind == "dump" else None)
 
 
 def bail_target(sym, best_bid, best_ask, tick):
@@ -1341,6 +1381,20 @@ async def main():
                                 fp = await fair_close(c, cs)
                                 ok, kind, why, sf = gap_guards(cb, ca, cbu, cau,
                                                                 fp, usdt_now)
+                                if not ok and ("skewed" in why or "thin" in why):
+                                    setup = await spike_setup(
+                                        c, cs, (cb + ca) / 2, usdt_now, meta[cs]["tick"])
+                                    if setup:
+                                        ok, kind, why, sf = gap_guards(
+                                            cb, ca, cbu, cau, fp, usdt_now, setup)
+                                        notify("🚀", "SPIKE SETUP",
+                                               f"{cs} | bid wall "
+                                               f"{num(setup['wall_px'])} "
+                                               f"({money(setup['wall_usd'])} USDT) | "
+                                               f"hollow {money(setup['near_usd'])} | "
+                                               f"exit {num(setup['target'])} | "
+                                               f"power {setup['power']:.0f}x",
+                                               wallet(cs.split("-")[0]))
                                 if ok:
                                     picked, tag = cand, "GAP"
                                     gap_kind, sell_fair = kind, sf
