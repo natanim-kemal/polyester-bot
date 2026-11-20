@@ -74,6 +74,14 @@ check("a broken handler answers instead of going silent",
       commands.reply("boom") == "command failed: bad")
 del commands.COMMANDS["boom"]
 
+check("stop is in the command menu",
+      any(c["command"] == "stop" for c in commands.command_menu()))
+commands.STOP_REQUESTED = False
+check("stop requests a halt", "STOP REQUESTED" in commands.reply("stop")
+      and commands.STOP_REQUESTED)
+check("start clears the halt", "RESUME REQUESTED" in commands.reply("start")
+      and not commands.STOP_REQUESTED)
+
 check("a fresh loop is ok", commands.health(3) == "ok")
 check("a minute late is slow", commands.health(60) == "slow")
 check("five minutes late is stuck", commands.health(300) == "stuck")
