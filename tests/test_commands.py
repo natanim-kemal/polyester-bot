@@ -82,6 +82,33 @@ check("stop requests a halt", "STOP REQUESTED" in commands.reply("stop")
 check("start clears the halt", "RESUME REQUESTED" in commands.reply("start")
       and not commands.STOP_REQUESTED)
 
+old_src = commands.SRC
+from tempfile import TemporaryDirectory
+
+class StopSrc:
+    def __init__(self, path):
+        self.path = path
+
+    def state_file(self, name):
+        return os.path.join(self.path, name)
+
+
+with TemporaryDirectory() as td:
+    commands.SRC = StopSrc(td)
+    commands.reply("stop")
+    check("stop survives a process restart",
+          os.path.isfile(os.path.join(td, "STOP")) and commands.STOP_REQUESTED)
+    commands.STOP_REQUESTED = False
+    commands.reply("start")
+    check("start clears the persisted stop",
+          not os.path.isfile(os.path.join(td, "STOP")) and not commands.STOP_REQUESTED)
+    with open(os.path.join(td, "STOP"), "w", encoding="utf-8") as f:
+        f.write(str(int(time.time() - 25 * 3600)))
+    check("a stop from two days ago expires", commands.stop_expired())
+    commands.reply("stop")
+    check("a fresh stop still holds", not commands.stop_expired())
+commands.SRC = old_src
+
 check("a fresh loop is ok", commands.health(3) == "ok")
 check("a minute late is slow", commands.health(60) == "slow")
 check("five minutes late is stuck", commands.health(300) == "stuck")
