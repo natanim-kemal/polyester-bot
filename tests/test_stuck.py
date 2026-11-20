@@ -128,6 +128,7 @@ def build_ns():
         "chase_allowed": lambda pos, now: True,
         "EMERGENCY": {}, "EMERGENCY_MIN_MOVE_PCT": 0.0,
         "emergency_biggest": lambda now: None,
+        "USDC_MODE": False,
         "chase_parked": lambda sym, now: False,
         "churn_note": lambda *a: None,
         "state": "buying", "now": 100.0,
