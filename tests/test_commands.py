@@ -266,12 +266,12 @@ check("help lists every command",
       all(f"/{name}" in text for name in
           ("volume", "vol", "chase", "status", "balance", "fees", "help")), text)
 check("help replies in header plus one line per command",
-      len(text.splitlines()) == 8, str(len(text.splitlines())))
+      len(text.splitlines()) == 1 + len(commands.COMMANDS),
+      str(len(text.splitlines())))
 
 menu = commands.command_menu()
 check("the command menu lists every command",
-      [c["command"] for c in menu] ==
-      ["balance", "chase", "fees", "help", "status", "vol", "volume"],
+      [c["command"] for c in menu] == sorted(commands.COMMANDS),
       "%d commands" % len(menu))
 check("menu names are valid telegram commands",
       all(c["command"].replace("_", "").isalnum() and c["command"].islower()
