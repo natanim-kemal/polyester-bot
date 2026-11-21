@@ -97,6 +97,7 @@ def build_ns(on):
         "USDC_MODE": on, "meta": META, "QUOTE": "USDT",
         "SCAN_SECONDS": 10.0, "next_scan": 0.0, "next_fallback": 0.0,
         "next_block_alert": 0.0, "state": "idle", "pos": {},
+        "usdc_err_at": 0.0,
         "now": 100.0,
         "carry": {}, "dust": {}, "adopt_q": [], "sat": {"n": 0},
         "GAP_MIN_PCT": Decimal("0.11"), "DEPTH_MIN_USD": Decimal("50"),
@@ -129,7 +130,7 @@ def build_ns(on):
 def run(on):
     ns = build_ns(on)
     exec(compile("async def idle_step(c, pairs):\n"
-                 "    global now, next_scan, next_fallback, state, pos\n"
+                 "    global now, next_scan, next_fallback, state, pos, usdc_err_at\n"
                  + textwrap.indent(seg(state_branch("idle").body), "    "),
                  "<idle_step>", "exec"), ns)
     asyncio.run(ns["idle_step"](None, META))
@@ -144,8 +145,11 @@ if placed:
     sym, side, qty, price, po = placed[0]
     check("it trades only USDC-USDT", sym == "USDC-USDT", sym)
     check("it buys at the exact best bid, no extra tick", price == BID, str(price))
-    check("it uses the full USDT balance", qty == ns["floor_step"](USDT / BID, META[sym]["step"]),
-          str(qty))
+    fee_buf = ns["FEE_BUFFER"]
+    expected = ns["floor_step"](USDT / (BID * fee_buf), META[sym]["step"])
+    check("it uses the full USDT minus fee reserve", qty == expected, str(qty))
+    check("the order cost fits inside the balance", qty * price <= USDT,
+          f"{qty * price} vs {USDT}")
     check("the buy is post-only", po is True, str(po))
 check("the position carries 3x patience", ns["pos"].get("time_mult") == 3.0,
       str(ns["pos"].get("time_mult")))
