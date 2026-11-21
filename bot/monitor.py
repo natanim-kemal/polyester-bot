@@ -1190,6 +1190,7 @@ async def main():
             pos, state = {}, "idle"
 
         halted = False
+        usdc_err_at = 0.0
         while True:
             now = time.time()
             if getattr(tg, "STOP_REQUESTED", False):
@@ -1266,7 +1267,7 @@ async def main():
                             uusdt = next((Decimal(r["available"])
                                           for r in rest_balances()
                                           if r.get("symbol") == QUOTE), Decimal(0))
-                            uq = floor_step(uusdt / ubid, um["step"])
+                            uq = floor_step(uusdt / (ubid * FEE_BUFFER), um["step"])
                             if uq > 0 and uq >= um["min_qty"] and uq * ubid >= um["min_notional"]:
                                 cid, err = await place(c, usym, "buy", uq, ubid,
                                                         post_only=True)
@@ -1283,8 +1284,10 @@ async def main():
                                            f"{num(uq)} @ {num(ubid)} (best bid) | "
                                            f"full balance {money(uusdt)} USDT")
                                 else:
-                                    notify("⚠️", "USDC BUY REJECTED",
-                                           f"{usym} | {err}")
+                                    if now - usdc_err_at > 600:
+                                        usdc_err_at = now
+                                        notify("⚠️", "USDC BUY REJECTED",
+                                               f"{usym} | {err}")
                         next_scan = now + SCAN_SECONDS
                     hot = None if USDC_MODE else emergency_biggest(now)
                     if hot is not None:
